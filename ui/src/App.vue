@@ -1,7 +1,17 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
-import * as echarts from 'echarts'
+import * as echarts from 'echarts/core'
+import { BarChart, LineChart } from 'echarts/charts'
+import { GridComponent, LegendComponent, TooltipComponent } from 'echarts/components'
+import { CanvasRenderer } from 'echarts/renderers'
+import type { EChartsType } from 'echarts/core'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import 'element-plus/es/components/message/style/css'
+import 'element-plus/es/components/message-box/style/css'
+
+// 按需注册用到的 ECharts 模块（bar/line 图 + grid/tooltip/legend + canvas 渲染器），
+// 避免把整个 echarts（约 1MB）打进产物
+echarts.use([BarChart, LineChart, GridComponent, LegendComponent, TooltipComponent, CanvasRenderer])
 import { Connection, DataAnalysis, Key, Monitor, Plus, Refresh, Tickets, User, UserFilled, Setting, Collection, SwitchButton, DocumentCopy } from '@element-plus/icons-vue'
 import { adminApi, authApi, portalApi, type Account, type AdminUsage, type ApiKey, type AuditLog, type Channel, type GatewaySettings, type GithubBinding, type GithubStarSettings, type ModelGroup, type NamedOption, type Overview, type Session, type Usage, type UsageFilters, type UserGroup } from './api'
 
@@ -17,8 +27,8 @@ const overviewRange = ref('today')
 const overview = ref<Overview>({ gateway: { activeUsers: 0, streamingRequests: 0, concurrent: 0, maxConcurrent: 0, waiting: 0, queueCapacity: 0 }, userGroups: [], channels: [], usage: { tokens: 0, requests: 0, totalActiveUsers: 0 }, history: [] })
 const gatewayChartEl = ref<HTMLElement>()
 const timelineChartEl = ref<HTMLElement>()
-let gatewayChart: echarts.ECharts | undefined
-let timelineChart: echarts.ECharts | undefined
+let gatewayChart: EChartsType | undefined
+let timelineChart: EChartsType | undefined
 const channels = ref<Channel[]>([])
 const users = ref<Account[]>([])
 const modelGroups = ref<ModelGroup[]>([])
