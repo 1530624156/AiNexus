@@ -1,0 +1,10 @@
+channel_model.channel_id -> channel.id
+request_audit_log.app_name -> gateway_token.app_name (logical; no foreign key for write throughput)
+request_audit_log.account_id -> account.id (logical audit snapshot; no foreign key for write throughput)
+request_audit_log.target_channel -> channel.name (logical; no foreign key for write throughput)
+gateway_token.account_id -> account.id (logical; user portal API Key ownership)
+model_group_model.model_group_id -> model_group.id
+user_group_member.user_group_id -> user_group.id
+user_group_member.account_id -> account.id
+user_group_model_group.user_group_id -> user_group.id
+user_group_model_group.model_group_id -> model_group.id

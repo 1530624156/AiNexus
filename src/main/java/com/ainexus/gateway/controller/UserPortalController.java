@@ -10,6 +10,7 @@ import com.ainexus.gateway.service.GatewayRuntimeSettingsService;
 import com.ainexus.gateway.service.ModelAuthorizationService;
 import com.ainexus.gateway.service.RouteCacheService;
 import com.ainexus.gateway.service.UserQuotaService;
+import com.ainexus.gateway.service.GithubStarGateService;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -38,6 +39,7 @@ public class UserPortalController {
     private final ModelAuthorizationService modelAuthorizationService;
     private final GatewayRuntimeSettingsService settingsService;
     private final UserQuotaService userQuotaService;
+    private final GithubStarGateService githubStarGateService;
 
     @GetMapping("/models")
     public ModelCatalog models(HttpServletRequest request) {
@@ -57,6 +59,7 @@ public class UserPortalController {
     @PostMapping("/api-keys")
     public ApiKeyCreated createKey(HttpServletRequest request, @RequestBody(required = false) Map<String, String> body) {
         ConsoleSessionService.SessionAccount account = account(request);
+        if ("USER".equals(account.role())) githubStarGateService.verifyForKeyCreation(account.id());
         Token token = new Token(); token.setAccountId(account.id()); token.setAppName("user-" + account.id() + "-" + randomKey().substring(0, 8));
         token.setToken("sk-ainexus-" + randomKey()); token.setStatus(1); token.setRemark(body == null ? null : body.get("remark"));
         tokenMapper.insert(token); routeCacheService.refresh();
