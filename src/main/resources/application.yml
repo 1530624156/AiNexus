@@ -1,0 +1,106 @@
+server:
+  port: 8080
+  shutdown: graceful
+  tomcat:
+    connection-timeout: 60s
+    keep-alive-timeout: 300s
+    max-connections: 8192
+    accept-count: 200
+
+spring:
+  application:
+    name: ainexus-gateway
+  # ===== 虚拟线程: 请求处理与 SSE 流转发全部运行在虚拟线程上, 阻塞 IO 成本极低 =====
+  threads:
+    virtual:
+      enabled: true
+  lifecycle:
+    timeout-per-shutdown-phase: 30s
+  datasource:
+    # 按需修改为真实地址; MySQL 不可用时网关以静态降级模式启动(见 gateway.degraded-channels)
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: jdbc:mysql://localhost:3306/ainexus?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
+    username: root
+    password: gyx1129
+    hikari:
+      # -1: 启动时不做快速失败连接检测, MySQL 不可用时网关仍可启动并进入静态降级路由
+      initialization-fail-timeout: -1
+      maximum-pool-size: 10
+      minimum-idle: 2
+      connection-timeout: 3000
+      # idleTimeout(默认10min) 需小于 maxLifetime, 避免 Hikari 告警
+      idle-timeout: 300000
+      max-lifetime: 600000
+      keepalive-time: 300000
+      connection-test-query: SELECT 1
+  # ===== Redis 占位配置(Redisson 由 RedisSupport 以降级模式管理) =====
+  data:
+    redis:
+      host: mavis01.top
+      port: 16379
+      password: RedisPwd
+      database: 0
+      timeout: 2s
+
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+    cache-enabled: false
+  global-config:
+    banner: false
+    db-config:
+      id-type: assign_id
+      logic-delete-field: deleted
+      logic-delete-value: 1
+      logic-not-delete-value: 0
+
+# ===== AiNexus 网关自身配置 =====
+gateway:
+  auth:
+    enabled: true
+    # Mock 鉴权(首版): 内部 Key 白名单, 客户端携带 Authorization: Bearer sk-ainexus-xxx
+    internal-keys:
+      - sk-ainexus-dev-team-a
+      - sk-ainexus-dev-team-b
+  admin:
+    # 仅用于极简 Admin API 鉴权；生产环境请以 GATEWAY_ADMIN_SECRET 环境变量覆盖，勿提交真实口令。
+    secret: ${GATEWAY_ADMIN_SECRET:change_me}
+  http-client:
+    # OkHttp 连接池: 网关需同时持有大量上游长连接
+    pool-max-idle: 64
+    pool-keep-alive-seconds: 300
+    connect-timeout-ms: 10000
+    read-timeout-ms: 180000
+    # SSE 流式专用: 0 = 不超时, 由上游/客户端断开自然结束
+    stream-call-timeout-ms: 0
+    stream-read-timeout-ms: 0
+    # 是否打印上游转发日志(生产慎用, 只在 debug 需要时开)
+    log-request: false
+  cors:
+    allowed-origins: "*"
+  # 降级路由: DB 不可用时兜底的静态渠道(同样支持 OpenAI 格式透传), 也可用于本地联调 Mock 上游
+  degraded-channels:
+    - model-name: mock-model
+      channel-name: local-mock-upstream
+      base-url: http://127.0.0.1:9999
+      api-key: sk-local-mock-upstream-key
+
+logging:
+  level:
+    root: info
+    com.ainexus.gateway: debug
+  file:
+    name: logs/ainexus-gateway.log
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      show-details: never
+  # 网关以"降级模式"运行时 MySQL/Redis 本就可缺失, 不将 DB 健康纳入存活判定
+  health:
+    db:
+      enabled: false
