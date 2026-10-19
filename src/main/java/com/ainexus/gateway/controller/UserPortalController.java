@@ -17,6 +17,7 @@ import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -66,6 +67,17 @@ public class UserPortalController {
         return new ApiKeyCreated(token.getId(), token.getToken(), token.getRemark());
     }
 
+    @PatchMapping("/api-keys/{id}/status")
+    public void updateKeyStatus(HttpServletRequest request, @PathVariable Long id, @RequestBody KeyStatusRequest body) {
+        ConsoleSessionService.SessionAccount account = account(request);
+        Token token = tokenMapper.selectById(id);
+        if (token == null || !account.id().equals(token.getAccountId())) return;
+        if (body.status() == 1 && "USER".equals(account.role())) githubStarGateService.verifyForKeyCreation(account.id());
+        token.setStatus(body.status() == 1 ? 1 : 0);
+        tokenMapper.updateById(token);
+        routeCacheService.refresh();
+    }
+
     @DeleteMapping("/api-keys/{id}")
     public void deleteKey(HttpServletRequest request, @PathVariable Long id) {
         Token token = tokenMapper.selectById(id);
@@ -94,6 +106,7 @@ public class UserPortalController {
     public record ModelCatalog(String baseUrl, List<String> models) { }
     public record ApiKeyView(Long id, String appName, String tokenMasked, Integer status, String remark, Object createTime) { }
     public record ApiKeyCreated(Long id, String token, String remark) { }
+    public record KeyStatusRequest(Integer status) { }
     public record QuotaView(String userGroup, String period, long quota, long used, Long remaining) { }
     public record UsageView(long requests, long errors, long inputTokens, long outputTokens, long totalTokens, long cacheTokens, List<String> apiKeys, List<String> models, List<UserQuotaService.Quota> quotas) { }
 }

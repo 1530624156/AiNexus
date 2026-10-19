@@ -72,6 +72,7 @@ export const portalApi = {
   keys: () => api.get<ApiKey[]>('/console/api-keys'),
   createKey: (body: { remark?: string }) => api.post<{ id: number; token: string; remark?: string }>('/console/api-keys', body),
   deleteKey: (id: number) => api.delete(`/console/api-keys/${id}`),
+  updateKeyStatus: (id: number, status: number) => api.patch(`/console/api-keys/${id}/status`, { status }),
   usage: (params: { apiKey?: string; model?: string }) => api.get<Usage>('/console/usage', { params }),
   changePassword: (body: { currentPassword: string; newPassword: string; confirmPassword: string }) => api.post('/console/change-password', body),
   githubStatus: () => api.get<GithubBinding>('/console/github/status'),

@@ -72,8 +72,9 @@ public class GithubStarGateService {
     public void verifyForKeyCreation(Long accountId) {
         Setting setting = settings(); if (!setting.enabled() || accountId == null) return;
         AccountGithubBinding binding = bindingMapper.selectById(accountId);
-        if (binding == null) throw BizException.forbidden("github_binding_required", "Bind a GitHub account and star " + setting.repository() + " before creating an API key");
-        if (!hasStar(binding.getAccessToken(), setting.repository())) throw BizException.forbidden("github_star_required", "Star " + setting.repository() + " before creating an API key");
+        String repositoryUrl = "https://github.com/" + setting.repository();
+        if (binding == null) throw BizException.forbidden("github_binding_required", "创建失败，请先绑定 GitHub 账号并为 " + repositoryUrl + " 点击 Star 后再创建或启用 API Key");
+        if (!hasStar(binding.getAccessToken(), setting.repository())) throw BizException.forbidden("github_star_required", "创建失败，请先为 " + repositoryUrl + " 点击 Star 后再创建或启用 API Key");
         binding.setStarVerifiedAt(LocalDateTime.now()); bindingMapper.updateById(binding);
     }
 
