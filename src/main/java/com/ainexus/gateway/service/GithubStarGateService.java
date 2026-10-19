@@ -2,10 +2,12 @@ package com.ainexus.gateway.service;
 
 import com.ainexus.gateway.common.BizException;
 import com.ainexus.gateway.config.GatewayProperties;
+import com.ainexus.gateway.entity.Account;
 import com.ainexus.gateway.entity.AccountGithubBinding;
 import com.ainexus.gateway.entity.GithubStarSetting;
 import com.ainexus.gateway.entity.Token;
 import com.ainexus.gateway.mapper.AccountGithubBindingMapper;
+import com.ainexus.gateway.mapper.AccountMapper;
 import com.ainexus.gateway.mapper.GithubStarSettingMapper;
 import com.ainexus.gateway.mapper.TokenMapper;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -36,6 +38,7 @@ public class GithubStarGateService {
     private static final String GITHUB_API = "https://api.github.com";
     private final GithubStarSettingMapper settingMapper;
     private final AccountGithubBindingMapper bindingMapper;
+    private final AccountMapper accountMapper;
     private final TokenMapper tokenMapper;
     private final RouteCacheService routeCacheService;
     private final GatewayProperties properties;
@@ -83,18 +86,20 @@ public class GithubStarGateService {
         Setting setting = settings();
         if (!setting.enabled()) return;
         LocalDateTime now = LocalDateTime.now();
-        if (!now.toLocalTime().withSecond(0).withNano(0).equals(java.time.LocalTime.parse(setting.dailyCheckTime())) || now.toLocalDate().equals(lastDailyCheck)) return;
+        java.time.LocalTime configured = java.time.LocalTime.parse(setting.dailyCheckTime());
+        if (now.getHour() != configured.getHour() || now.getMinute() != configured.getMinute() || now.toLocalDate().equals(lastDailyCheck)) return;
         verifyAllUsers(setting);
         lastDailyCheck = now.toLocalDate();
     }
 
     private void verifyAllUsers(Setting setting) {
         boolean changed = false;
-        for (AccountGithubBinding binding : bindingMapper.selectList(new LambdaQueryWrapper<>())) {
-            boolean starred;
-            try { starred = hasStar(binding.getAccessToken(), setting.repository()); } catch (BizException ignored) { starred = false; }
+        for (Account account : accountMapper.selectList(new LambdaQueryWrapper<Account>().eq(Account::getRole, "USER").eq(Account::getStatus, 1))) {
+            AccountGithubBinding binding = bindingMapper.selectById(account.getId());
+            boolean starred = false;
+            if (binding != null) { try { starred = hasStar(binding.getAccessToken(), setting.repository()); } catch (BizException ignored) { starred = false; } }
             if (starred) { binding.setStarVerifiedAt(LocalDateTime.now()); bindingMapper.updateById(binding); continue; }
-            for (Token token : tokenMapper.selectList(new LambdaQueryWrapper<Token>().eq(Token::getAccountId, binding.getAccountId()).eq(Token::getStatus, 1))) { token.setStatus(0); tokenMapper.updateById(token); changed = true; }
+            for (Token token : tokenMapper.selectList(new LambdaQueryWrapper<Token>().eq(Token::getAccountId, account.getId()).eq(Token::getStatus, 1))) { token.setStatus(0); tokenMapper.updateById(token); changed = true; }
         }
         if (changed) routeCacheService.refresh();
     }
