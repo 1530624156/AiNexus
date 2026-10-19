@@ -52,7 +52,7 @@ public class WebConfig implements WebMvcConfigurer {
                 .allowedHeaders("*");
         registry.addMapping("/api/console/**")
                 .allowedOrigins(allowedOrigins)
-                .allowedMethods("GET", "POST", "DELETE", "OPTIONS")
+                .allowedMethods("GET", "POST", "PATCH", "DELETE", "OPTIONS")
                 .allowedHeaders("*");
     }
 }
