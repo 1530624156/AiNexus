@@ -64,26 +64,68 @@ public class GithubStarGateService {
         return settings();
     }
     public String authorizationUrl(Long accountId) {
-        Setting setting = settings(); requireOAuth(setting);
-        String state = state(accountId, Instant.now().getEpochSecond());
+        Setting setting = settings();
+        requireOAuth(setting);
+        return oauthAuthorizationUrl(setting, state("bind:" + accountId + ":" + Instant.now().getEpochSecond()));
+    }
+
+    /** Starts GitHub sign-in. The callback admits only an existing system-account binding. */
+    public String loginAuthorizationUrl() {
+        Setting setting = settings();
+        requireOAuth(setting);
+        return oauthAuthorizationUrl(setting, state("login:" + Instant.now().getEpochSecond()));
+    }
+
+    public boolean isLoginState(String state) {
+        return verifyState(state).startsWith("login:");
+    }
+
+    public void bindFromCallback(String code, String state) {
+        Long accountId = verifyBindingState(state);
+        Setting setting = settings();
+        requireOAuth(setting);
+        OAuthToken token = requestToken(setting, code);
+        String login = requestLogin(token.accessToken());
+        AccountGithubBinding binding = bindingMapper.selectById(accountId);
+        if (binding == null) {
+            binding = new AccountGithubBinding();
+            binding.setAccountId(accountId);
+        }
+        saveCredentials(binding, login, token, true);
+    }
+
+    /** Completes GitHub sign-in without ever creating an account or a binding. */
+    public Account loginFromCallback(String code, String state) {
+        verifyLoginState(state);
+        Setting setting = settings();
+        requireOAuth(setting);
+        OAuthToken token = requestToken(setting, code);
+        String login = requestLogin(token.accessToken());
+        List<AccountGithubBinding> bindings = bindingMapper.selectList(new LambdaQueryWrapper<AccountGithubBinding>()
+                .eq(AccountGithubBinding::getGithubLogin, login));
+        if (bindings.isEmpty()) throw BizException.forbidden("github_account_not_bound", "This GitHub account is not bound to a system account");
+        if (bindings.size() > 1) throw BizException.forbidden("github_account_ambiguous", "This GitHub account has multiple system bindings; contact an administrator");
+        AccountGithubBinding binding = bindings.getFirst();
+        Account account = accountMapper.selectById(binding.getAccountId());
+        if (account == null || account.getStatus() == null || account.getStatus() != 1) {
+            throw BizException.forbidden("github_account_unavailable", "The system account bound to this GitHub account is unavailable");
+        }
+        saveCredentials(binding, login, token, false);
+        return account;
+    }
+
+    private String oauthAuthorizationUrl(Setting setting, String state) {
         return "https://github.com/login/oauth/authorize?client_id=" + enc(setting.clientId()) + "&redirect_uri=" + enc(callbackUrl(setting)) + "&scope=" + enc("read:user") + "&state=" + enc(state);
     }
-    public void bindFromCallback(String code, String state) {
-        State parsed = verifyState(state); Setting setting = settings(); requireOAuth(setting);
-        OAuthToken token = requestToken(setting, code); String login = requestLogin(token.accessToken());
-        AccountGithubBinding binding = new AccountGithubBinding();
-        binding.setAccountId(parsed.accountId()); binding.setGithubLogin(login); binding.setAccessToken(token.accessToken());
-        binding.setRefreshToken(token.refreshToken()); binding.setAccessTokenExpiresAt(token.accessTokenExpiresAt());
-        binding.setRefreshTokenExpiresAt(token.refreshTokenExpiresAt()); binding.setStarVerifiedAt(null);
-        if (bindingMapper.selectById(parsed.accountId()) == null) bindingMapper.insert(binding);
-        else bindingMapper.update(null, new LambdaUpdateWrapper<AccountGithubBinding>()
-                .eq(AccountGithubBinding::getAccountId, parsed.accountId())
-                .set(AccountGithubBinding::getGithubLogin, login)
-                .set(AccountGithubBinding::getAccessToken, token.accessToken())
-                .set(AccountGithubBinding::getRefreshToken, token.refreshToken())
-                .set(AccountGithubBinding::getAccessTokenExpiresAt, token.accessTokenExpiresAt())
-                .set(AccountGithubBinding::getRefreshTokenExpiresAt, token.refreshTokenExpiresAt())
-                .set(AccountGithubBinding::getStarVerifiedAt, null));
+
+    private void saveCredentials(AccountGithubBinding binding, String login, OAuthToken token, boolean resetStarVerification) {
+        binding.setGithubLogin(login);
+        binding.setAccessToken(token.accessToken());
+        binding.setRefreshToken(token.refreshToken());
+        binding.setAccessTokenExpiresAt(token.accessTokenExpiresAt());
+        binding.setRefreshTokenExpiresAt(token.refreshTokenExpiresAt());
+        if (resetStarVerification) binding.setStarVerifiedAt(null);
+        if (bindingMapper.selectById(binding.getAccountId()) == null) bindingMapper.insert(binding); else bindingMapper.updateById(binding);
     }
     public Binding binding(Long accountId) {
         AccountGithubBinding b = bindingMapper.selectById(accountId);
@@ -245,8 +287,28 @@ public class GithubStarGateService {
     private String text(JsonNode json, String field) { return json.hasNonNull(field) ? json.get(field).asText() : null; }
     private String requestLogin(String token) { try { HttpRequest req = api("/user", token); JsonNode json = objectMapper.readTree(http.send(req, HttpResponse.BodyHandlers.ofString()).body()); if (!json.hasNonNull("login")) throw BizException.badRequest("github_oauth_failed", "Unable to read GitHub account"); return json.get("login").asText(); } catch (BizException e) { throw e; } catch (Exception e) { throw BizException.badRequest("github_oauth_failed", "Unable to read GitHub account"); } }
     private HttpRequest api(String path, String token) { return HttpRequest.newBuilder(URI.create(GITHUB_API + path)).header("Accept", "application/vnd.github+json").header("Authorization", "Bearer " + token).header("X-GitHub-Api-Version", "2022-11-28").GET().build(); }
-    private String state(Long id, long time) { try { String payload = id + ":" + time; return Base64.getUrlEncoder().withoutPadding().encodeToString(payload.getBytes(StandardCharsets.UTF_8)) + "." + sign(payload); } catch (Exception e) { throw new IllegalStateException("Unable to create GitHub authorization state", e); } }
-    private State verifyState(String state) { try { String[] p=state.split("\\.",2); String payload=new String(Base64.getUrlDecoder().decode(p[0]),StandardCharsets.UTF_8); if(p.length!=2||!MessageDigest.isEqual(sign(payload).getBytes(StandardCharsets.UTF_8),p[1].getBytes(StandardCharsets.UTF_8))) throw new Exception(); String[] v=payload.split(":",2); if(Instant.now().getEpochSecond()-Long.parseLong(v[1])>600) throw new Exception(); return new State(Long.parseLong(v[0])); } catch(Exception e){ throw BizException.badRequest("invalid_github_state","GitHub authorization state is invalid or expired"); } }
+    private String state(String payload) { try { return Base64.getUrlEncoder().withoutPadding().encodeToString(payload.getBytes(StandardCharsets.UTF_8)) + "." + sign(payload); } catch (Exception e) { throw new IllegalStateException("Unable to create GitHub authorization state", e); } }
+    private Long verifyBindingState(String state) {
+        String[] values = verifyState(state).split(":", 3);
+        if (values.length != 3 || !"bind".equals(values[0])) throw invalidState();
+        try { return Long.parseLong(values[1]); } catch (NumberFormatException e) { throw invalidState(); }
+    }
+    private void verifyLoginState(String state) {
+        String[] values = verifyState(state).split(":", 2);
+        if (values.length != 2 || !"login".equals(values[0])) throw invalidState();
+    }
+    private String verifyState(String state) {
+        try {
+            String[] parts = state.split("\\.", 2);
+            if (parts.length != 2) throw new IllegalArgumentException();
+            String payload = new String(Base64.getUrlDecoder().decode(parts[0]), StandardCharsets.UTF_8);
+            if (!MessageDigest.isEqual(sign(payload).getBytes(StandardCharsets.UTF_8), parts[1].getBytes(StandardCharsets.UTF_8))) throw new IllegalArgumentException();
+            int timeSeparator = payload.lastIndexOf(':');
+            if (timeSeparator < 1 || Instant.now().getEpochSecond() - Long.parseLong(payload.substring(timeSeparator + 1)) > 600) throw new IllegalArgumentException();
+            return payload;
+        } catch (Exception e) { throw invalidState(); }
+    }
+    private BizException invalidState() { return BizException.badRequest("invalid_github_state", "GitHub authorization state is invalid or expired"); }
     private String sign(String value) throws Exception { Mac m=Mac.getInstance("HmacSHA256");m.init(new SecretKeySpec(properties.getConsole().getSessionSecret().getBytes(StandardCharsets.UTF_8),"HmacSHA256"));return Base64.getUrlEncoder().withoutPadding().encodeToString(m.doFinal(value.getBytes(StandardCharsets.UTF_8))); }
     private void requireOAuth(Setting s) { if(!StringUtils.hasText(s.clientId())||!StringUtils.hasText(s.clientSecret())||!StringUtils.hasText(s.publicBaseUrl())) throw BizException.badRequest("github_oauth_not_configured","GitHub OAuth is not configured"); }
     private String callbackUrl(Setting s) { return s.publicBaseUrl().replaceAll("/+$","")+"/api/console/github/callback"; }

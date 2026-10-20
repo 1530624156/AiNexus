@@ -27,7 +27,7 @@ public class WebConfig implements WebMvcConfigurer {
                 .addPathPatterns("/v1/**");
         registry.addInterceptor(consoleAuthInterceptor)
                 .addPathPatterns("/api/console/**", "/api/auth/me")
-                .excludePathPatterns("/api/console/github/callback");
+                .excludePathPatterns("/api/console/github/callback", "/api/console/github/login-authorize");
         registry.addInterceptor(adminAuthInterceptor)
                 .addPathPatterns("/api/admin/**");
     }

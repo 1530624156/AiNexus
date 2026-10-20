@@ -33,6 +33,7 @@ export type UserGroup = { id: number; name: string; maxConcurrent: number; apiKe
 
 export const authApi = {
   login: (body: { username: string; password: string }) => api.post<Session>('/auth/login', body),
+  githubAuthorize: () => api.get<{ authorizationUrl: string }>('/console/github/login-authorize'),
   me: () => api.get<Omit<Session, 'token'>>('/auth/me'),
 }
 export const adminApi = {
