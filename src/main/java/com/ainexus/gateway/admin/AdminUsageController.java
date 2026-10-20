@@ -1,8 +1,6 @@
 package com.ainexus.gateway.admin;
 
-import com.ainexus.gateway.entity.RequestAuditLog;
 import com.ainexus.gateway.mapper.RequestAuditLogMapper;
-import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -10,12 +8,14 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.EnumMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-/** Administrative usage analytics based on immutable request audit snapshots. */
+/** Administrative usage analytics based on database-side audit aggregations. */
 @RestController
 @RequestMapping("/api/admin/usage")
 @RequiredArgsConstructor
@@ -26,41 +26,64 @@ public class AdminUsageController {
     public UsageResponse usage(@RequestParam(required = false) String user,
                                @RequestParam(required = false) String provider,
                                @RequestParam(required = false) String apiType) {
-        List<RequestAuditLog> rows = auditMapper.selectList(new LambdaQueryWrapper<RequestAuditLog>()
-                .eq(StringUtils.hasText(user), RequestAuditLog::getUserName, user)
-                .eq(StringUtils.hasText(provider), RequestAuditLog::getProvider, provider)
-                .eq(StringUtils.hasText(apiType), RequestAuditLog::getApiType, apiType)
-                .orderByDesc(RequestAuditLog::getCreateTime));
-        Totals totals = totals(rows);
-        return new UsageResponse(totals, distribution(rows, RequestAuditLog::getProvider), distribution(rows, RequestAuditLog::getUpstreamAccount),
-                distribution(rows, RequestAuditLog::getModelGroupNames), distribution(rows, RequestAuditLog::getRequestModel),
-                distribution(rows, RequestAuditLog::getUserGroupNames), distribution(rows, RequestAuditLog::getUserName));
+        RequestAuditLogMapper.AuditUsageTotals totals = auditMapper.usageTotals(user, provider, apiType);
+        Map<Dimension, List<Distribution>> distributions = distributions(auditMapper.usageDistributions(user, provider, apiType));
+        return new UsageResponse(totals(totals), distributions.get(Dimension.providers), distributions.get(Dimension.upstreamAccounts),
+                distributions.get(Dimension.modelGroups), distributions.get(Dimension.models), distributions.get(Dimension.userGroups),
+                distributions.get(Dimension.users));
     }
 
     @GetMapping("/filters")
     public FilterOptions filters() {
-        List<RequestAuditLog> rows = auditMapper.selectList(new LambdaQueryWrapper<>());
-        return new FilterOptions(options(rows, RequestAuditLog::getUserName), options(rows, RequestAuditLog::getProvider), options(rows, RequestAuditLog::getApiType));
+        Map<String, List<String>> options = new LinkedHashMap<>();
+        options.put("users", new ArrayList<>());
+        options.put("providers", new ArrayList<>());
+        options.put("apiTypes", new ArrayList<>());
+        auditMapper.usageFilterOptions().forEach(option -> options.get(option.dimension()).add(option.name()));
+        options.values().forEach(values -> values.sort(String::compareTo));
+        return new FilterOptions(options.get("users"), options.get("providers"), options.get("apiTypes"));
     }
 
-    private List<String> options(List<RequestAuditLog> rows, java.util.function.Function<RequestAuditLog, String> field) {
-        return rows.stream().map(field).filter(StringUtils::hasText).distinct().sorted().toList();
-    }
-    private Totals totals(List<RequestAuditLog> rows) {
-        long input = sum(rows, RequestAuditLog::getInputTokens);
-        long cache = sum(rows, RequestAuditLog::getCacheTokens);
-        return new Totals(rows.size(), input, sum(rows, RequestAuditLog::getOutputTokens), sum(rows, RequestAuditLog::getTotalTokens), cache, cacheHitRate(input, cache));
-    }
-    private long sum(List<RequestAuditLog> rows, java.util.function.Function<RequestAuditLog, Long> value) { return rows.stream().map(value).filter(java.util.Objects::nonNull).mapToLong(Long::longValue).sum(); }
-    private double cacheHitRate(long inputTokens, long cacheTokens) { long totalPromptTokens = inputTokens + cacheTokens; return totalPromptTokens <= 0 ? 0D : Math.round(cacheTokens * 10_000D / totalPromptTokens) / 100D; }
-    private List<Distribution> distribution(List<RequestAuditLog> rows, java.util.function.Function<RequestAuditLog, String> field) {
-        Map<String, List<RequestAuditLog>> groups = new LinkedHashMap<>();
-        rows.forEach(row -> { String raw = field.apply(row); if (!StringUtils.hasText(raw)) return; for (String name : raw.split(",")) groups.computeIfAbsent(name, ignored -> new java.util.ArrayList<>()).add(row); });
-        return groups.entrySet().stream().map(entry -> { Totals totals = totals(entry.getValue()); return new Distribution(entry.getKey(), totals.requests(), totals.totalTokens(), totals.cacheTokens(), totals.cacheHitRate()); })
-                .sorted(Comparator.comparingLong(Distribution::totalTokens).reversed()).toList();
+    private Map<Dimension, List<Distribution>> distributions(List<RequestAuditLogMapper.AuditUsageDistribution> rows) {
+        Map<Dimension, Map<String, Totals>> grouped = new EnumMap<>(Dimension.class);
+        for (Dimension dimension : Dimension.values()) grouped.put(dimension, new LinkedHashMap<>());
+        for (RequestAuditLogMapper.AuditUsageDistribution row : rows) {
+            Dimension dimension = Dimension.valueOf(row.dimension());
+            String[] names = (dimension == Dimension.modelGroups || dimension == Dimension.userGroups) ? row.name().split(",") : new String[]{row.name()};
+            for (String rawName : names) {
+                String name = rawName.trim();
+                if (!StringUtils.hasText(name)) continue;
+                grouped.get(dimension).merge(name, totals(row), Totals::add);
+            }
+        }
+        Map<Dimension, List<Distribution>> result = new EnumMap<>(Dimension.class);
+        grouped.forEach((dimension, values) -> result.put(dimension, values.entrySet().stream()
+                .map(entry -> new Distribution(entry.getKey(), entry.getValue().requests(), entry.getValue().totalTokens(), entry.getValue().cacheTokens(), entry.getValue().cacheHitRate()))
+                .sorted(Comparator.comparingLong(Distribution::totalTokens).reversed()).toList()));
+        return result;
     }
 
-    public record Totals(long requests, long inputTokens, long outputTokens, long totalTokens, long cacheTokens, double cacheHitRate) { }
+    private Totals totals(RequestAuditLogMapper.AuditUsageTotals value) {
+        return new Totals(value.requests(), value.inputTokens(), value.outputTokens(), value.totalTokens(), value.cacheTokens(), cacheHitRate(value.inputTokens(), value.cacheTokens()));
+    }
+
+    private Totals totals(RequestAuditLogMapper.AuditUsageDistribution value) {
+        return new Totals(value.requests(), value.inputTokens(), 0, value.totalTokens(), value.cacheTokens(), cacheHitRate(value.inputTokens(), value.cacheTokens()));
+    }
+
+    private static double cacheHitRate(long inputTokens, long cacheTokens) {
+        long totalPromptTokens = inputTokens + cacheTokens;
+        return totalPromptTokens <= 0 ? 0D : Math.round(cacheTokens * 10_000D / totalPromptTokens) / 100D;
+    }
+
+    private enum Dimension { providers, upstreamAccounts, modelGroups, models, userGroups, users }
+    public record Totals(long requests, long inputTokens, long outputTokens, long totalTokens, long cacheTokens, double cacheHitRate) {
+        private Totals add(Totals other) {
+            long input = inputTokens + other.inputTokens;
+            long cache = cacheTokens + other.cacheTokens;
+            return new Totals(requests + other.requests, input, outputTokens + other.outputTokens, totalTokens + other.totalTokens, cache, AdminUsageController.cacheHitRate(input, cache));
+        }
+    }
     public record Distribution(String name, long requests, long totalTokens, long cacheTokens, double cacheHitRate) { }
     public record UsageResponse(Totals totals, List<Distribution> providers, List<Distribution> upstreamAccounts, List<Distribution> modelGroups, List<Distribution> models, List<Distribution> userGroups, List<Distribution> users) { }
     public record FilterOptions(List<String> users, List<String> providers, List<String> apiTypes) { }

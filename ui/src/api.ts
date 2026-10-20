@@ -41,7 +41,11 @@ export function clearStoredSession() {
 export const api = axios.create({ baseURL: '/api', timeout: 20_000 })
 api.interceptors.request.use((config) => {
   const token = storedValue(TOKEN_KEY)
-  if (token) config.headers.set('Authorization', `Bearer ${token}`)
+  if (token) {
+    const authorization = `Bearer ${token}`
+    if (typeof config.headers.set === 'function') config.headers.set('Authorization', authorization)
+    else config.headers.Authorization = authorization
+  }
   return config
 })
 

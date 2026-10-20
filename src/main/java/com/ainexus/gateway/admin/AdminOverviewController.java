@@ -38,10 +38,10 @@ public class AdminOverviewController {
     public Overview response(@RequestParam(defaultValue = "today") String range) {
         LocalDateTime start = start(range);
         GatewayConcurrencyService.Snapshot gateway = gatewayConcurrencyService.snapshot();
-        List<RequestAuditLog> audit = auditMapper.selectList(new LambdaQueryWrapper<RequestAuditLog>().ge(RequestAuditLog::getCreateTime, start));
-        long tokens = audit.stream().map(RequestAuditLog::getTotalTokens).filter(java.util.Objects::nonNull).mapToLong(Long::longValue).sum();
-        long requests = audit.size();
-        long totalUsers = audit.stream().map(RequestAuditLog::getAccountId).filter(java.util.Objects::nonNull).distinct().count();
+        RequestAuditLogMapper.AuditOverviewSummary audit = auditMapper.overviewSince(start);
+        long tokens = audit.totalTokens();
+        long requests = audit.requests();
+        long totalUsers = audit.activeUsers();
         List<UserGroupConcurrencyService.Snapshot> groups = userGroupConcurrencyService.snapshots();
         List<ChannelSnapshot> channels = channelMapper.selectList(new LambdaQueryWrapper<Channel>().eq(Channel::getStatus, 1).orderByDesc(Channel::getPriority)).stream()
                 .map(channel -> new ChannelSnapshot(channel.getId(), channel.getName(), channel.getProvider(), channel.getPriority(), channelConcurrencyService.activeLocal(channel.getId(), channel.getMaxConcurrent() == null ? 0 : channel.getMaxConcurrent()), channel.getMaxConcurrent() == null ? 0 : channel.getMaxConcurrent(), circuitBreakerService.isOpen(toRoute(channel)) ? "CIRCUIT_OPEN" : "HEALTHY")).toList();
