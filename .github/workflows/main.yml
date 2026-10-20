@@ -1,0 +1,23 @@
+name: Cloud Sync to Gitee
+
+on:
+  push:
+    branches: [ "*" ]
+  workflow_dispatch:
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout GitHub
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Push to Gitee via HTTPS Token
+        env:
+          GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
+        run: |
+          # 使用私人令牌直接通过 HTTPS 强制推送到 Gitee，无需任何 SSH 配置
+          git push --force --all https://oauth2:${GITEE_TOKEN}@gitee.com/guo_yi_xuan/AiNexus.git
+          git push --force --tags https://oauth2:${GITEE_TOKEN}@gitee.com/guo_yi_xuan/AiNexus.git
