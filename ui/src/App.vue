@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import * as echarts from 'echarts/core'
-import { BarChart, LineChart } from 'echarts/charts'
+import { LineChart } from 'echarts/charts'
 import { GridComponent, LegendComponent, TooltipComponent } from 'echarts/components'
 import { CanvasRenderer } from 'echarts/renderers'
 import type { EChartsType } from 'echarts/core'
@@ -9,9 +9,9 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import 'element-plus/es/components/message/style/css'
 import 'element-plus/es/components/message-box/style/css'
 
-// 按需注册用到的 ECharts 模块（bar/line 图 + grid/tooltip/legend + canvas 渲染器），
+// 按需注册用到的 ECharts 模块（line 图 + grid/tooltip/legend + canvas 渲染器），
 // 避免把整个 echarts（约 1MB）打进产物
-echarts.use([BarChart, LineChart, GridComponent, LegendComponent, TooltipComponent, CanvasRenderer])
+echarts.use([LineChart, GridComponent, LegendComponent, TooltipComponent, CanvasRenderer])
 import { Connection, DataAnalysis, Key, Monitor, Plus, Refresh, Tickets, User, UserFilled, Setting, Collection, SwitchButton, DocumentCopy } from '@element-plus/icons-vue'
 import { adminApi, authApi, portalApi, type Account, type AdminUsage, type ApiKey, type AuditLog, type Channel, type GatewaySettings, type GithubBinding, type GithubStarSettings, type ModelGroup, type NamedOption, type Overview, type Session, type Usage, type UsageFilters, type UserGroup } from './api'
 
@@ -25,10 +25,15 @@ const loading = ref(false)
 const loginForm = reactive({ username: '', password: '' })
 const overviewRange = ref('today')
 const overview = ref<Overview>({ gateway: { activeUsers: 0, streamingRequests: 0, concurrent: 0, maxConcurrent: 0, waiting: 0, queueCapacity: 0 }, userGroups: [], channels: [], usage: { tokens: 0, requests: 0, totalActiveUsers: 0 }, history: [] })
-const gatewayChartEl = ref<HTMLElement>()
 const timelineChartEl = ref<HTMLElement>()
-let gatewayChart: EChartsType | undefined
+const overviewUpdatedAt = ref('')
 let timelineChart: EChartsType | undefined
+const historyIsDemo = computed(() => !overview.value.history.length)
+const concurrencyRate = computed(() => occupancy(overview.value.gateway.concurrent, overview.value.gateway.maxConcurrent))
+const queueRate = computed(() => occupancy(overview.value.gateway.waiting, overview.value.gateway.queueCapacity))
+function occupancy(active: number, limit: number) { return limit > 0 ? Math.min(100, Math.round(active / limit * 100)) : 0 }
+function loadTone(rate: number) { return rate >= 80 ? 'high' : rate >= 50 ? 'medium' : 'normal' }
+function onOverviewResize() { timelineChart?.resize() }
 const channels = ref<Channel[]>([])
 const users = ref<Account[]>([])
 const modelGroups = ref<ModelGroup[]>([])
@@ -109,8 +114,32 @@ async function copyText(value: string, label: string) { try { if (navigator.clip
 async function copyModelId(model: string) { await copyText(model, '模型 ID') }
 async function copyBaseUrl() { await copyText(userBaseUrl.value, 'Base URL') }
 function renderOverviewCharts() {
-  if (gatewayChartEl.value) { gatewayChart ??= echarts.init(gatewayChartEl.value); const limit = overview.value.gateway.maxConcurrent || Math.max(overview.value.gateway.concurrent, 1); const queueLimit = overview.value.gateway.queueCapacity || Math.max(overview.value.gateway.waiting, 1); gatewayChart.setOption({ grid: { left: 40, right: 20, top: 26, bottom: 28 }, xAxis: { type: 'category', data: ['网关并发', '等待队列'], axisTick: { show: false } }, yAxis: { type: 'value', max: Math.max(limit, queueLimit, 1), splitLine: { lineStyle: { color: '#e5e2d8' } } }, series: [{ type: 'bar', data: [{ value: overview.value.gateway.concurrent, itemStyle: { color: '#3b82f6' } }, { value: overview.value.gateway.waiting, itemStyle: { color: '#8b98aa' } }], barWidth: 34, label: { show: true, position: 'top', formatter: (item: any) => item.dataIndex === 0 ? `${item.value} / ${overview.value.gateway.maxConcurrent || '∞'}` : `${item.value} / ${overview.value.gateway.queueCapacity || '0'}` } }] }) }
-  if (timelineChartEl.value) { timelineChart ??= echarts.init(timelineChartEl.value); const labels = overview.value.history.map(point => point.time.replace('T', ' ').slice(5, 16)); timelineChart.setOption({ tooltip: { trigger: 'axis' }, legend: { data: ['网关并发', '等待队列', '流式请求'], textStyle: { color: '#748078' } }, grid: { left: 42, right: 20, top: 38, bottom: 32 }, xAxis: { type: 'category', data: labels, boundaryGap: false, axisLabel: { color: '#748078' } }, yAxis: { type: 'value', minInterval: 1, splitLine: { lineStyle: { color: '#e5e2d8' } } }, series: [{ name: '网关并发', type: 'line', smooth: true, showSymbol: false, data: overview.value.history.map(point => point.concurrent), lineStyle: { color: '#3b82f6', width: 2 }, areaStyle: { color: 'rgba(59,130,246,.10)' } }, { name: '等待队列', type: 'line', smooth: true, showSymbol: false, data: overview.value.history.map(point => point.waiting), lineStyle: { color: '#8b98aa', width: 2 } }, { name: '流式请求', type: 'line', smooth: true, showSymbol: false, data: overview.value.history.map(point => point.streams), lineStyle: { color: '#5e8fdb', width: 2 } }] }) }
+  if (!timelineChartEl.value) return
+  if (timelineChart && timelineChart.getDom() !== timelineChartEl.value) { timelineChart.dispose(); timelineChart = undefined }
+  timelineChart ??= echarts.init(timelineChartEl.value)
+  // 仅在没有服务端历史数据时绘制明确标注的示意曲线，不影响真实指标。
+  const now = new Date()
+  const history = overview.value.history.length ? overview.value.history : Array.from({ length: 24 }, (_, i) => {
+    const time = new Date(now.getTime() - (23 - i) * 3600000).toLocaleString('sv-SE').replace(' ', 'T')
+    const concurrent = Math.max(0, Math.round(5 + 3.4 * Math.sin(i * .62) + 2.2 * Math.sin(i * 1.7)))
+    return { time, concurrent, waiting: Math.max(0, Math.round((concurrent - 6) * .4)), streams: Math.max(0, Math.round(concurrent * .55)) }
+  })
+  const demo = historyIsDemo.value
+  timelineChart.setOption({
+    animationDuration: 550,
+    color: ['#3978db', '#e9a258', '#66ada4'],
+    tooltip: { trigger: 'axis', backgroundColor: '#172b43', borderWidth: 0, textStyle: { color: '#fff', fontSize: 12 }, axisPointer: { type: 'line', lineStyle: { color: '#9ab7e5', type: 'dashed' } }, valueFormatter: (value: number) => `${value}${demo ? ' · 示例' : ''}` },
+    legend: { right: 4, top: 0, itemWidth: 14, itemHeight: 3, textStyle: { color: '#76869b', fontSize: 11 }, data: ['网关并发', '等待队列', '流式请求'] },
+    grid: { left: 34, right: 12, top: 36, bottom: 26, containLabel: true },
+    xAxis: { type: 'category', boundaryGap: false, data: history.map(point => point.time.replace('T', ' ').slice(5, 16)), axisLine: { lineStyle: { color: '#e7edf5' } }, axisTick: { show: false }, axisLabel: { color: '#91a0b2', fontSize: 10, hideOverlap: true } },
+    yAxis: { type: 'value', min: 0, minInterval: 1, axisLabel: { color: '#91a0b2', fontSize: 10 }, splitLine: { lineStyle: { color: '#edf1f6', type: 'dashed' } } },
+    series: [
+      { name: '网关并发', type: 'line', smooth: .35, showSymbol: false, symbolSize: 7, data: history.map(point => point.concurrent), lineStyle: { width: 3 }, areaStyle: { color: { type: 'linear', x: 0, y: 0, x2: 0, y2: 1, colorStops: [{ offset: 0, color: 'rgba(57,120,219,.23)' }, { offset: 1, color: 'rgba(57,120,219,0)' }] } } },
+      { name: '等待队列', type: 'line', smooth: .35, showSymbol: false, data: history.map(point => point.waiting), lineStyle: { width: 1.7 } },
+      { name: '流式请求', type: 'line', smooth: .35, showSymbol: false, data: history.map(point => point.streams), lineStyle: { width: 1.7 } }
+    ]
+  }, true)
+  timelineChart.resize()
 }
 function changeOverviewRange(range: string) { overviewRange.value = range; loadCurrent() }
 function switchWorkspace(next: 'admin' | 'user') { workspace.value = next; loadCurrent() }
@@ -119,7 +148,7 @@ async function loadCurrent() {
   try {
     loading.value = true
     if (workspace.value === 'admin') {
-      if (adminPage.value === 'overview') { overview.value = (await adminApi.overview(overviewRange.value)).data; await nextTick(); renderOverviewCharts() }
+      if (adminPage.value === 'overview') { overview.value = (await adminApi.overview(overviewRange.value)).data; overviewUpdatedAt.value = new Date().toLocaleString('zh-CN', { hour12: false }); await nextTick(); renderOverviewCharts() }
       if (adminPage.value === 'channels') channels.value = (await adminApi.channels()).data
       if (adminPage.value === 'model-groups') { const [groups, available] = await Promise.all([adminApi.modelGroups(), adminApi.availableGroupModels()]); modelGroups.value = groups.data; availableGroupModels.value = available.data }
       if (adminPage.value === 'user-groups') { const [groups, members, modelGroups] = await Promise.all([adminApi.userGroups(), adminApi.availableGroupMembers(), adminApi.availableAuthorizedModelGroups()]); userGroups.value = groups.data; availableGroupMembers.value = members.data; availableAuthorizedModelGroups.value = modelGroups.data }
@@ -208,8 +237,8 @@ async function removeKey(item: ApiKey) { await ElMessageBox.confirm('撤销该 A
 async function changeKeyStatus(item: ApiKey) { const enabling = item.status !== 1; try { if (enabling) await ElMessageBox.confirm('启用时会校验 GitHub 账号绑定和项目 Star 状态。', '确认启用 API Key', { type: 'warning' }); await portalApi.updateKeyStatus(item.id, enabling ? 1 : 0); ElMessage.success(enabling ? 'API Key 已启用' : 'API Key 已停用'); loadCurrent() } catch (error: any) { if (error !== 'cancel') ElMessage.error(error?.response?.data?.error?.message ?? '更新 API Key 状态失败') } }
 function copyKey() { copyText(revealedKey.value, 'API Key') }
 
-onMounted(restoreSession)
-onBeforeUnmount(() => { gatewayChart?.dispose(); timelineChart?.dispose() })
+onMounted(() => { restoreSession(); window.addEventListener('resize', onOverviewResize) })
+onBeforeUnmount(() => { window.removeEventListener('resize', onOverviewResize); timelineChart?.dispose() })
 </script>
 
 <template>
@@ -221,10 +250,101 @@ onBeforeUnmount(() => { gatewayChart?.dispose(); timelineChart?.dispose() })
     <aside class="rail"><div class="brand"><span class="brand-mark">A</span><div><b>AiNexus</b><small>{{ workspace === 'admin' ? 'ADMIN CONTROL' : 'USER PORTAL' }}</small></div></div>
       <nav v-if="workspace === 'admin'" class="nav-list"><button :class="{active:adminPage==='overview'}" @click="goAdmin('overview')"><DataAnalysis />概览</button><button :class="{active:adminPage==='channels'}" @click="goAdmin('channels')"><Connection />账号池</button><button :class="{active:adminPage==='model-groups'}" @click="goAdmin('model-groups')"><Collection />模型组</button><button :class="{active:adminPage==='users'}" @click="goAdmin('users')"><User />用户</button><button :class="{active:adminPage==='user-groups'}" @click="goAdmin('user-groups')"><UserFilled />用户组</button><button :class="{active:adminPage==='usage'}" @click="goAdmin('usage')"><Monitor />用量统计</button><button :class="{active:adminPage==='logs'}" @click="goAdmin('logs')"><Tickets />调用日志</button><button :class="{active:adminPage==='gateway'}" @click="goAdmin('gateway')"><Connection />网关设置</button><button :class="{active:adminPage==='system'}" @click="goAdmin('system')"><Setting />系统设置</button></nav>
       <nav v-else class="nav-list"><button :class="{active:userPage==='marketplace'}" @click="goUser('marketplace')"><Collection />模型广场</button><button :class="{active:userPage==='keys'}" @click="goUser('keys')"><Key />API Keys</button><button :class="{active:userPage==='usage'}" @click="goUser('usage')"><Monitor />用量统计</button><button :class="{active:userPage==='settings'}" @click="goUser('settings')"><Setting />账户设置</button></nav>
-      <div class="rail-footer"><span class="live-dot"></span>{{ session.username }} · {{ session.role }}</div></aside>
-    <section class="workspace" v-loading="loading"><header class="topbar"><div><p class="eyebrow">{{ workspace === 'admin' ? 'ADMIN CONSOLE' : 'USER WORKSPACE' }}</p><h1>{{ title }}</h1></div><div class="workspace-actions"><el-button v-if="isAdmin" :type="workspace==='admin'?'primary':'default'" @click="switchWorkspace(workspace==='admin'?'user':'admin')"><SwitchButton />{{ workspace==='admin'?'切换用户端':'切换管理端' }}</el-button><el-button @click="logout">退出登录</el-button></div></header>
+      <div class="rail-footer"><span class="live-dot" aria-hidden="true"></span><span>{{ session.username }} · {{ session.role }}</span><small>在线</small></div></aside>
+    <section class="workspace" v-loading="loading"><header class="topbar"><div><p class="eyebrow">{{ workspace === 'admin' ? 'ADMIN CONSOLE' : 'USER WORKSPACE' }}</p><div class="topbar-title"><h1>{{ title }}</h1><span v-if="workspace==='admin' && adminPage==='overview' && overviewUpdatedAt" class="update-stamp">数据更新于 {{ overviewUpdatedAt }}</span></div></div><div class="workspace-actions"><button v-if="isAdmin" type="button" class="top-action top-action-primary" @click="switchWorkspace(workspace==='admin'?'user':'admin')"><span class="top-action-icon"><Connection /></span><span>{{ workspace==='admin'?'切换用户端':'切换管理端' }}</span></button><button type="button" class="top-action top-action-logout" @click="logout"><span class="top-action-icon"><SwitchButton /></span><span>退出登录</span></button></div></header>
 
-      <section v-if="workspace==='admin' && adminPage==='overview'" class="overview-page"><div class="panel-head"><div><p class="eyebrow">LIVE GATEWAY OPERATIONS</p><h2>网关状态</h2></div><el-button :icon="Refresh" @click="loadCurrent">刷新</el-button></div><div class="overview-status-grid"><section class="overview-live"><div class="live-heading"><div><p class="eyebrow">LIVE CAPACITY</p><h3>当前网关负载</h3></div><span class="live-dot"></span></div><div class="live-counters"><article><span>活跃用户</span><b>{{overview.gateway.activeUsers}}</b></article><article><span>流式请求</span><b>{{overview.gateway.streamingRequests}}</b></article><article><span>网关并发</span><b>{{overview.gateway.concurrent}} / {{overview.gateway.maxConcurrent || '∞'}}</b></article><article><span>等待队列</span><b>{{overview.gateway.waiting}} / {{overview.gateway.queueCapacity}}</b></article></div><div ref="gatewayChartEl" class="overview-chart capacity-chart"></div></section><section class="overview-usage"><div class="range-tabs"><h3>用量统计</h3><el-radio-group :model-value="overviewRange" size="small" @change="changeOverviewRange"><el-radio-button value="today">今日</el-radio-button><el-radio-button value="24h">近24小时</el-radio-button><el-radio-button value="7d">近7天</el-radio-button><el-radio-button value="30d">近30天</el-radio-button></el-radio-group></div><div class="usage-kpis"><article><span>Token</span><b>{{overview.usage.tokens.toLocaleString()}}</b></article><article><span>请求统计</span><b>{{overview.usage.requests.toLocaleString()}}</b></article><article><span>总活跃用户</span><b>{{overview.usage.totalActiveUsers.toLocaleString()}}</b></article></div></section></div><div class="overview-tables"><section><div class="section-title"><div><p class="eyebrow">USER GROUP CONCURRENCY</p><h3>用户组并发</h3></div></div><el-table :data="overview.userGroups" size="small" max-height="260"><el-table-column prop="name" label="用户组" min-width="150"/><el-table-column label="当前 / 上限" width="130"><template #default="{row}">{{row.active}} / {{row.limit || '∞'}}</template></el-table-column><el-table-column label="利用率" width="145"><template #default="{row}"><el-progress :percentage="row.limit ? Math.min(100,Math.round(row.active/row.limit*100)) : 0" :format="row.limit ? undefined : ()=>'不限制'" :stroke-width="9"/></template></el-table-column></el-table></section><section><div class="section-title"><div><p class="eyebrow">UPSTREAM ACCOUNT CONCURRENCY</p><h3>模型账号并发</h3></div></div><el-table :data="overview.channels" size="small" max-height="260"><el-table-column prop="name" label="上游账号" min-width="145"><template #default="{row}"><b>{{row.name}}</b><small class="sub">{{row.provider}}</small></template></el-table-column><el-table-column prop="priority" label="优先级" width="80"/><el-table-column label="当前 / 上限" width="115"><template #default="{row}">{{row.active}} / {{row.limit || '∞'}}</template></el-table-column><el-table-column label="利用率" width="120"><template #default="{row}"><el-progress :percentage="row.limit ? Math.min(100,Math.round(row.active/row.limit*100)) : 0" :format="row.limit ? undefined : ()=>'不限制'" :stroke-width="8"/></template></el-table-column><el-table-column label="健康状态" width="110"><template #default="{row}"><el-tag :type="row.health==='HEALTHY'?'success':'danger'">{{row.health==='HEALTHY'?'健康':'熔断'}}</el-tag></template></el-table-column></el-table></section></div><section class="timeline-panel"><div class="range-tabs"><div><p class="eyebrow">CONCURRENCY HISTORY</p><h3>历史并发</h3></div><el-radio-group :model-value="overviewRange" size="small" @change="changeOverviewRange"><el-radio-button value="today">今日</el-radio-button><el-radio-button value="24h">近24小时</el-radio-button><el-radio-button value="7d">近7天</el-radio-button><el-radio-button value="30d">近30天</el-radio-button></el-radio-group></div><div ref="timelineChartEl" class="overview-chart timeline-chart"></div></section></section>
+      <section v-if="workspace==='admin' && adminPage==='overview'" class="overview-page">
+        <section class="overview-live">
+          <div class="overview-card-head"><div><p class="eyebrow">LIVE GATEWAY OPERATIONS / 01</p><div class="heading-inline"><h2>网关状态</h2><span class="running-label"><i class="live-dot"></i> 实时运行</span></div><p class="card-description">当前网关负载 · 实时容量与请求活动</p></div><el-button :icon="Refresh" @click="loadCurrent">刷新数据</el-button></div>
+          <div class="live-counters">
+            <article class="gateway-metric"><div class="metric-label"><span class="metric-icon"><User /></span>活跃用户</div><div class="metric-number" :class="{ idle: !overview.gateway.activeUsers }">{{ overview.gateway.activeUsers }}</div><small>当前在线用户</small></article>
+            <article class="gateway-metric"><div class="metric-label"><span class="metric-icon"><Monitor /></span>流式请求</div><div class="metric-number" :class="{ idle: !overview.gateway.streamingRequests }">{{ overview.gateway.streamingRequests }}</div><small>正在传输</small></article>
+            <article class="gateway-metric"><div class="metric-label"><span class="metric-icon"><Connection /></span>网关并发</div><div class="metric-number" :class="{ idle: !overview.gateway.concurrent }">{{ overview.gateway.concurrent }}<span> / {{ overview.gateway.maxConcurrent || '∞' }}</span></div><div class="meter" :class="loadTone(concurrencyRate)"><i :style="{ width: `${concurrencyRate}%` }"></i></div><small>{{ overview.gateway.maxConcurrent ? `${concurrencyRate}% 容量占用` : '并发不限制' }}</small></article>
+            <article class="gateway-metric"><div class="metric-label"><span class="metric-icon"><Tickets /></span>等待队列</div><div class="metric-number" :class="{ idle: !overview.gateway.waiting }">{{ overview.gateway.waiting }}<span> / {{ overview.gateway.queueCapacity }}</span></div><div class="meter" :class="loadTone(queueRate)"><i :style="{ width: `${queueRate}%` }"></i></div><small>{{ overview.gateway.queueCapacity ? `${queueRate}% 队列占用` : '队列未开放' }}</small></article>
+          </div>
+        </section>
+        <section class="overview-usage">
+<div class="range-tabs"><div><p class="eyebrow">USAGE SNAPSHOT / 02</p><h3>用量统计</h3></div>
+<el-radio-group :model-value="overviewRange" size="small" @change="changeOverviewRange">
+<el-radio-button value="today">今日</el-radio-button>
+<el-radio-button value="24h">近24小时</el-radio-button>
+<el-radio-button value="7d">近7天</el-radio-button>
+<el-radio-button value="30d">近30天</el-radio-button>
+</el-radio-group>
+</div>
+<div class="usage-kpis">
+<article><span class="usage-icon"><DataAnalysis /></span><div><span>Token 消耗</span><b>{{overview.usage.tokens.toLocaleString()}}</b><small>累计 Token 用量</small></div></article>
+<article><span class="usage-icon"><Tickets /></span><div><span>请求统计</span><b>{{overview.usage.requests.toLocaleString()}}</b><small>累计请求次数</small></div></article>
+<article><span class="usage-icon"><UserFilled /></span><div><span>总活跃用户</span><b>{{overview.usage.totalActiveUsers.toLocaleString()}}</b><small>所选时段内</small></div></article>
+</div>
+</section>
+<div class="overview-tables">
+<section>
+<div class="section-title">
+<div>
+<p class="eyebrow">USER GROUP CONCURRENCY</p>
+<h3>用户组并发</h3>
+</div>
+</div>
+<el-table :data="overview.userGroups" size="small" max-height="260">
+<el-table-column prop="name" label="用户组" min-width="150"/>
+<el-table-column label="当前 / 上限" width="130">
+<template #default="{row}"><span class="capacity-value">{{row.active}} <span>/</span> {{row.limit || '∞'}}</span></template>
+</el-table-column>
+<el-table-column label="利用率" width="145">
+<template #default="{row}">
+<div v-if="row.limit" class="table-utilization"><div class="meter" :class="loadTone(occupancy(row.active,row.limit))"><i :style="{width: `${occupancy(row.active,row.limit)}%`}"></i></div><span>{{occupancy(row.active,row.limit)}}%</span></div><span v-else class="unlimited-badge">∞ <span>不限制</span></span>
+</template>
+</el-table-column>
+</el-table>
+</section>
+<section>
+<div class="section-title">
+<div>
+<p class="eyebrow">UPSTREAM ACCOUNT CONCURRENCY</p>
+<h3>模型账号并发</h3>
+</div>
+</div>
+<el-table :data="overview.channels" size="small" max-height="260">
+<el-table-column prop="name" label="上游账号" min-width="145">
+<template #default="{row}">
+<b>{{row.name}}</b>
+<small class="sub">{{row.provider}}</small>
+</template>
+</el-table-column>
+<el-table-column label="优先级" width="80"><template #default="{row}"><span class="priority-badge">P{{row.priority}}</span></template></el-table-column>
+<el-table-column label="当前 / 上限" width="115">
+<template #default="{row}"><span class="capacity-value">{{row.active}} <span>/</span> {{row.limit || '∞'}}</span></template>
+</el-table-column>
+<el-table-column label="利用率" width="120">
+<template #default="{row}">
+<div v-if="row.limit" class="table-utilization"><div class="meter" :class="loadTone(occupancy(row.active,row.limit))"><i :style="{width: `${occupancy(row.active,row.limit)}%`}"></i></div><span>{{occupancy(row.active,row.limit)}}%</span></div><span v-else class="unlimited-badge">∞ <span>不限制</span></span>
+</template>
+</el-table-column>
+<el-table-column label="健康状态" width="110">
+<template #default="{row}">
+<el-tag :type="row.health==='HEALTHY'?'success':'danger'">{{row.health==='HEALTHY'?'健康':'熔断'}}</el-tag>
+</template>
+</el-table-column>
+</el-table>
+</section>
+</div>
+<section class="timeline-panel">
+<div class="range-tabs">
+<div>
+<p class="eyebrow">CONCURRENCY HISTORY</p>
+<h3>历史并发 <span v-if="historyIsDemo" class="demo-badge">示意数据</span></h3>
+</div>
+<el-radio-group :model-value="overviewRange" size="small" @change="changeOverviewRange">
+<el-radio-button value="today">今日</el-radio-button>
+<el-radio-button value="24h">近24小时</el-radio-button>
+<el-radio-button value="7d">近7天</el-radio-button>
+<el-radio-button value="30d">近30天</el-radio-button>
+</el-radio-group>
+</div>
+<div ref="timelineChartEl" class="overview-chart timeline-chart" role="img" :aria-label="historyIsDemo ? '历史并发示意趋势图' : '历史并发趋势图'"></div>
+</section>
+</section>
       <section v-else-if="workspace==='admin' && adminPage==='channels'" class="page-panel"><div class="panel-head"><div><p class="eyebrow">UPSTREAM ACCOUNT POOL</p><h2>账号池</h2></div><div class="workspace-actions"><el-button :icon="Refresh" @click="loadCurrent">刷新</el-button><el-button type="primary" :icon="Plus" @click="openCreateChannel">新增渠道</el-button></div></div><el-table :data="channels" class="dense-table"><el-table-column prop="name" label="渠道" min-width="160"><template #default="{row}"><b>{{row.name}}</b><small class="sub">{{row.provider}} · {{row.baseUrl}}</small></template></el-table-column><el-table-column label="协议" min-width="200"><template #default="{row}"><el-tag v-for="p in row.supportedProtocols ?? [row.protocol]" :key="p" class="protocol-tag" :type="p===row.protocol?'success':'info'">{{p}}</el-tag></template></el-table-column><el-table-column label="模型绑定" width="120"><template #default="{row}"><el-tag effect="plain">已绑定 {{row.models.length}} 个</el-tag></template></el-table-column><el-table-column label="状态" width="90"><template #default="{row}"><el-tag :type="row.status?'success':'info'">{{row.status?'启用':'停用'}}</el-tag></template></el-table-column><el-table-column label="操作" width="265" fixed="right"><template #default="{row}"><el-button link type="primary" @click="openChannelTest(row)">测试</el-button><el-button link type="primary" @click="openEditChannel(row)">编辑</el-button><el-button link @click="toggleChannel(row)">{{row.status?'停用':'启用'}}</el-button><el-button link type="danger" @click="removeChannel(row)">删除</el-button></template></el-table-column></el-table></section>
       <section v-else-if="workspace==='admin' && adminPage==='model-groups'" class="page-panel"><div class="panel-head"><div><p class="eyebrow">MODEL COLLECTIONS</p><h2>模型组</h2></div><div class="workspace-actions"><el-button :icon="Refresh" @click="loadCurrent">刷新</el-button><el-button type="primary" :icon="Plus" @click="openCreateModelGroup">新增模型组</el-button></div></div><el-table :data="modelGroups" class="dense-table"><el-table-column prop="name" label="名称" min-width="180"/><el-table-column label="模型" min-width="280"><template #default="{row}"><el-tag v-for="model in row.models.slice(0,4)" :key="model" class="protocol-tag" effect="plain">{{model}}</el-tag><small v-if="row.models.length>4" class="sub">另 {{row.models.length-4}} 个</small></template></el-table-column><el-table-column label="数量" width="90"><template #default="{row}">{{row.models.length}}</template></el-table-column><el-table-column prop="remark" label="备注" min-width="180" show-overflow-tooltip/><el-table-column prop="updateTime" label="更新时间" width="180"/><el-table-column label="操作" width="150"><template #default="{row}"><el-button link type="primary" @click="openEditModelGroup(row)">编辑</el-button><el-button link type="danger" @click="removeModelGroup(row)">删除</el-button></template></el-table-column></el-table></section>
       <section v-else-if="workspace==='admin' && adminPage==='user-groups'" class="page-panel"><div class="panel-head"><div><p class="eyebrow">ACCESS POLICY & QUOTA</p><h2>用户组</h2></div><div class="workspace-actions"><el-button :icon="Refresh" @click="loadCurrent">刷新</el-button><el-button type="primary" :icon="Plus" @click="openCreateUserGroup">新增用户组</el-button></div></div><el-table :data="userGroups" class="dense-table"><el-table-column prop="name" label="名称" min-width="150"/><el-table-column label="成员" width="110"><template #default="{row}"><el-tag effect="plain">{{row.memberNames.length}} 人</el-tag></template></el-table-column><el-table-column label="授权模型组" min-width="180"><template #default="{row}"><el-tag v-for="name in row.modelGroupNames.slice(0,2)" :key="name" class="protocol-tag" effect="plain">{{name}}</el-tag><small v-if="row.modelGroupNames.length>2" class="sub">另 {{row.modelGroupNames.length-2}} 个</small></template></el-table-column><el-table-column label="组并发 / Key 并发" width="155"><template #default="{row}">{{quotaDisplay(row.maxConcurrent)}} / {{quotaDisplay(row.apiKeyMaxConcurrent)}}</template></el-table-column><el-table-column label="组剩余 Token / 配额" width="190"><template #default="{row}"><b>{{row.remainingTokenQuota === null || row.remainingTokenQuota === undefined ? '不限制' : quotaDisplay(row.remainingTokenQuota)}} / {{quotaDisplay(row.tokenQuota)}}</b><small v-if="row.tokenQuota" class="sub">已用 {{quotaDisplay(row.usedPromptTokens)}} · {{row.quotaPeriod}}</small></template></el-table-column><el-table-column label="成员 Token / 并发" width="160"><template #default="{row}">{{quotaDisplay(row.memberTokenQuota)}} / {{quotaDisplay(row.memberMaxConcurrent)}}</template></el-table-column><el-table-column prop="remark" label="备注" min-width="160" show-overflow-tooltip/><el-table-column label="操作" width="150"><template #default="{row}"><el-button link type="primary" @click="openEditUserGroup(row)">编辑</el-button><el-button link type="danger" @click="removeUserGroup(row)">删除</el-button></template></el-table-column></el-table></section>
