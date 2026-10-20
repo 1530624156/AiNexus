@@ -134,6 +134,31 @@ public class GithubStarGateService {
                         StringUtils.hasText(b.getRefreshToken()) && (b.getRefreshTokenExpiresAt() == null || b.getRefreshTokenExpiresAt().isAfter(LocalDateTime.now())),
                         b.getAccessTokenExpiresAt(), b.getRefreshTokenExpiresAt());
     }
+
+    /**
+     * Revalidates an existing GitHub binding and returns its active account for
+     * silent console-session renewal. No account or binding is created here.
+     */
+    public Account renewConsoleSession(Long accountId) {
+        if (accountId == null) return null;
+        AccountGithubBinding binding = bindingMapper.selectById(accountId);
+        if (binding == null || !StringUtils.hasText(binding.getGithubLogin())) return null;
+
+        Setting setting = settings();
+        if (!StringUtils.hasText(setting.clientId()) || !StringUtils.hasText(setting.clientSecret())) return null;
+        if (!renewAccessTokenIfNeeded(binding, setting, true)) return null;
+
+        try {
+            if (!binding.getGithubLogin().equals(requestLogin(binding.getAccessToken()))) return null;
+        } catch (BizException ignored) {
+            return null;
+        }
+
+        Account account = accountMapper.selectById(accountId);
+        if (account == null || account.getStatus() == null || account.getStatus() != 1) return null;
+        return account;
+    }
+
     public void unbind(Long accountId) { bindingMapper.deleteById(accountId); }
     /** Network check used only while creating a new USER API key, never in /v1 request processing. */
     public void verifyForKeyCreation(Long accountId) {

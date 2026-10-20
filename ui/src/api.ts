@@ -1,13 +1,92 @@
-import axios from 'axios'
+import axios, { type AxiosError, type AxiosRequestConfig } from 'axios'
+
+const TOKEN_KEY = 'ainexus.console.token'
+const USERNAME_KEY = 'ainexus.console.username'
+const ROLE_KEY = 'ainexus.console.role'
+export const SESSION_EXPIRED_EVENT = 'ainexus:session-expired'
+
+export type Session = { token: string; username: string; role: 'ADMIN' | 'USER' }
+
+type RenewableRequestConfig = AxiosRequestConfig & { _ainexusRenewed?: boolean }
+
+function storedValue(key: string) {
+  return localStorage.getItem(key) ?? sessionStorage.getItem(key)
+}
+
+export function readStoredSession(): Session | null {
+  const token = storedValue(TOKEN_KEY)
+  const username = storedValue(USERNAME_KEY)
+  const role = storedValue(ROLE_KEY)
+  return token && username && (role === 'ADMIN' || role === 'USER') ? { token, username, role } : null
+}
+
+export function saveStoredSession(session: Session) {
+  sessionExpired = false
+  localStorage.setItem(TOKEN_KEY, session.token)
+  localStorage.setItem(USERNAME_KEY, session.username)
+  localStorage.setItem(ROLE_KEY, session.role)
+  sessionStorage.removeItem(TOKEN_KEY)
+  sessionStorage.removeItem(USERNAME_KEY)
+  sessionStorage.removeItem(ROLE_KEY)
+}
+
+export function clearStoredSession() {
+  for (const storage of [localStorage, sessionStorage]) {
+    storage.removeItem(TOKEN_KEY)
+    storage.removeItem(USERNAME_KEY)
+    storage.removeItem(ROLE_KEY)
+  }
+}
 
 export const api = axios.create({ baseURL: '/api', timeout: 20_000 })
 api.interceptors.request.use((config) => {
-  const token = sessionStorage.getItem('ainexus.console.token')
+  const token = storedValue(TOKEN_KEY)
   if (token) config.headers.set('Authorization', `Bearer ${token}`)
   return config
 })
 
-export type Session = { token: string; username: string; role: 'ADMIN' | 'USER' }
+let renewingSession: Promise<void> | null = null
+let sessionExpired = false
+
+function expireSession() {
+  if (sessionExpired) return
+  sessionExpired = true
+  clearStoredSession()
+  window.dispatchEvent(new CustomEvent(SESSION_EXPIRED_EVENT))
+}
+
+function renewSession() {
+  renewingSession ??= api.post<Session>('/auth/renew')
+    .then(({ data }) => saveStoredSession(data))
+    .finally(() => { renewingSession = null })
+  return renewingSession
+}
+
+api.interceptors.response.use(undefined, async (error: AxiosError) => {
+  const config = error.config as RenewableRequestConfig | undefined
+  const path = config?.url ?? ''
+  const canRenew = error.response?.status === 401
+    && !!config
+    && !config._ainexusRenewed
+    && !!storedValue(TOKEN_KEY)
+    && !path.startsWith('/auth/login')
+    && !path.startsWith('/auth/renew')
+
+  if (!canRenew) {
+    if (error.response?.status === 401 && config?._ainexusRenewed) expireSession()
+    throw error
+  }
+
+  config._ainexusRenewed = true
+  try {
+    await renewSession()
+    return api.request(config)
+  } catch {
+    expireSession()
+    throw error
+  }
+})
+
 export type Account = { id: number; username: string; remark?: string | null; status: number; createTime?: string }
 export type ModelBinding = { id?: number; modelName: string; upstreamModelName?: string | null; status?: number; remark?: string | null }
 export type Channel = { id: number; name: string; provider: string; protocol: string; supportedProtocols?: string[]; baseUrl: string; priority: number; weight: number; maxConcurrent: number; failureCount: number; defaultTestModel?: string | null; status: number; remark?: string | null; models: ModelBinding[] }

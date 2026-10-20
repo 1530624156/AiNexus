@@ -39,9 +39,9 @@ spring:
   # ===== Redis 占位配置(Redisson 由 RedisSupport 以降级模式管理) =====
   data:
     redis:
-      host: localhost
+      host: ainexus.b509.cn
       port: 6379
-      password: RedisPwd
+      password: gyx1129@
       database: 0
       timeout: 2s
 

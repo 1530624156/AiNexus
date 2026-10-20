@@ -13,11 +13,12 @@ import 'element-plus/es/components/message-box/style/css'
 // 避免把整个 echarts（约 1MB）打进产物
 echarts.use([LineChart, GridComponent, LegendComponent, TooltipComponent, CanvasRenderer])
 import { Connection, DataAnalysis, Key, Monitor, Plus, Refresh, Tickets, User, UserFilled, Setting, Collection, SwitchButton, DocumentCopy, Trophy } from '@element-plus/icons-vue'
-import { adminApi, authApi, portalApi, type Account, type AdminUsage, type ApiKey, type AuditLog, type Channel, type GatewaySettings, type GithubBinding, type GithubStarCheckResult, type GithubStarSettings, type ModelGroup, type NamedOption, type Overview, type Session, type Usage, type UsageFilters, type UsageRanking, type UserGroup } from './api'
+import { adminApi, authApi, clearStoredSession, portalApi, readStoredSession, saveStoredSession, SESSION_EXPIRED_EVENT, type Account, type AdminUsage, type ApiKey, type AuditLog, type Channel, type GatewaySettings, type GithubBinding, type GithubStarCheckResult, type GithubStarSettings, type ModelGroup, type NamedOption, type Overview, type Session, type Usage, type UsageFilters, type UsageRanking, type UserGroup } from './api'
 
 type AdminPage = 'overview' | 'channels' | 'model-groups' | 'users' | 'user-groups' | 'usage' | 'ranking' | 'logs' | 'gateway' | 'system'
 type UserPage = 'marketplace' | 'keys' | 'usage' | 'ranking' | 'settings'
 const session = ref<Session | null>(null)
+const booting = ref(true)
 const workspace = ref<'admin' | 'user'>('user')
 const adminPage = ref<AdminPage>('overview')
 const userPage = ref<UserPage>('marketplace')
@@ -108,12 +109,11 @@ const isAdmin = computed(() => session.value?.role === 'ADMIN')
 
 function applySession(result: Session) {
   session.value = result
-  sessionStorage.setItem('ainexus.console.token', result.token)
-  sessionStorage.setItem('ainexus.console.username', result.username)
-  sessionStorage.setItem('ainexus.console.role', result.role)
+  saveStoredSession(result)
   workspace.value = result.role === 'ADMIN' ? 'admin' : 'user'
 }
-function restoreSession() {
+
+async function restoreSession() {
   const hash = new URLSearchParams(window.location.hash.slice(1))
   const githubLoginError = hash.get('github_login_error')
   const githubLoginToken = hash.get('github_login_token')
@@ -126,13 +126,21 @@ function restoreSession() {
   if (githubLoginToken && githubLoginUsername && githubLoginRole) {
     applySession({ token: githubLoginToken, username: githubLoginUsername, role: githubLoginRole })
     ElMessage.success('GitHub 登录成功，授权凭据已刷新')
-    loadCurrent()
+    await loadCurrent()
     return
   }
-  const token = sessionStorage.getItem('ainexus.console.token')
-  const username = sessionStorage.getItem('ainexus.console.username')
-  const role = sessionStorage.getItem('ainexus.console.role') as Session['role'] | null
-  if (token && username && role) { session.value = { token, username, role }; workspace.value = role === 'ADMIN' ? 'admin' : 'user'; loadCurrent() }
+
+  const stored = readStoredSession()
+  if (!stored) return
+  session.value = stored
+  workspace.value = stored.role === 'ADMIN' ? 'admin' : 'user'
+  try {
+    const current = (await authApi.me()).data
+    applySession({ token: readStoredSession()?.token ?? stored.token, username: current.username, role: current.role })
+    await loadCurrent()
+  } catch (error: any) {
+    if (error?.response?.status === 401) logout()
+  }
 }
 async function login() {
   try {
@@ -145,7 +153,8 @@ async function loginWithGithub() {
   try { window.location.assign((await authApi.githubAuthorize()).data.authorizationUrl) }
   catch (error: any) { ElMessage.error(error?.response?.data?.error?.message ?? 'GitHub 登录尚未配置') }
 }
-function logout() { sessionStorage.clear(); session.value = null; loginForm.password = ''; }
+function logout() { clearStoredSession(); session.value = null; loginForm.password = ''; }
+function onSessionExpired() { logout(); ElMessage.error('登录状态已失效，请重新登录') }
 function githubRepositoryUrl(repository?: string | null) { if (!repository) return ''; return repository.startsWith('http://') || repository.startsWith('https://') ? repository : `https://github.com/${repository.replace(/^\/+/, '')}` }
 async function copyText(value: string, label: string) { try { if (navigator.clipboard?.writeText && window.isSecureContext) { await navigator.clipboard.writeText(value) } else { const input = document.createElement('textarea'); input.value = value; input.setAttribute('readonly', ''); input.style.cssText = 'position:fixed;left:-9999px;top:0;opacity:0'; document.body.appendChild(input); input.select(); const copied = document.execCommand('copy'); document.body.removeChild(input); if (!copied) throw new Error('clipboard_copy_failed') } ElMessage.success(`${label} 已复制`) } catch { ElMessage.error(`复制失败，请手动复制${label}`) } }
 async function copyModelId(model: string) { await copyText(model, '模型 ID') }
@@ -203,7 +212,7 @@ async function loadCurrent() {
       if (userPage.value === 'settings') githubBinding.value = (await portalApi.githubStatus()).data
     }
   } catch (error: any) {
-    if (error?.response?.status === 401) { ElMessage.error('登录会话已失效'); logout() }
+    if (error?.response?.status === 401) logout()
     else ElMessage.error(error?.response?.data?.error?.message ?? '加载数据失败')
   } finally { loading.value = false }
 }
@@ -277,12 +286,21 @@ async function removeKey(item: ApiKey) { await ElMessageBox.confirm('撤销该 A
 async function changeKeyStatus(item: ApiKey) { const enabling = item.status !== 1; try { if (enabling) await ElMessageBox.confirm('启用时会校验 GitHub 账号绑定和项目 Star 状态。', '确认启用 API Key', { type: 'warning' }); await portalApi.updateKeyStatus(item.id, enabling ? 1 : 0); ElMessage.success(enabling ? 'API Key 已启用' : 'API Key 已停用'); loadCurrent() } catch (error: any) { if (error !== 'cancel') ElMessage.error(error?.response?.data?.error?.message ?? '更新 API Key 状态失败') } }
 function copyKey() { copyText(revealedKey.value, 'API Key') }
 
-onMounted(() => { restoreSession(); window.addEventListener('resize', onOverviewResize) })
-onBeforeUnmount(() => { window.removeEventListener('resize', onOverviewResize); timelineChart?.dispose() })
+onMounted(() => {
+  window.addEventListener(SESSION_EXPIRED_EVENT, onSessionExpired)
+  window.addEventListener('resize', onOverviewResize)
+  restoreSession().finally(() => { booting.value = false })
+})
+onBeforeUnmount(() => {
+  window.removeEventListener(SESSION_EXPIRED_EVENT, onSessionExpired)
+  window.removeEventListener('resize', onOverviewResize)
+  timelineChart?.dispose()
+})
 </script>
 
 <template>
-  <main v-if="!session" class="login-shell">
+  <main v-if="booting" class="boot-splash" aria-label="正在恢复登录状态" />
+  <main v-else-if="!session" class="login-shell">
     <section class="login-panel"><p class="eyebrow">AINEXUS / PRIVATE GATEWAY</p><h1>Control<br>Access.</h1><p class="login-copy">统一管理模型网关、访问凭据与内部调用。</p><el-form label-position="top" @submit.prevent="login"><el-form-item label="用户名"><el-input v-model="loginForm.username" autocomplete="username" /></el-form-item><el-form-item label="密码"><el-input v-model="loginForm.password" type="password" show-password autocomplete="current-password" @keyup.enter="login" /></el-form-item><el-button type="primary" class="login-button" :loading="loading" @click="login">登录控制台</el-button><el-button class="github-login-button" @click="loginWithGithub">使用 GitHub 登录</el-button><small>仅已绑定系统账号的 GitHub 账号可登录。</small></el-form></section><aside class="login-aside"><span class="login-mark">A</span><div><p>AI NEXUS</p><b>INTERNAL<br>OPERATIONS</b></div></aside>
   </main>
 

@@ -44,13 +44,34 @@ public class ConsoleSessionService {
                     Base64.getUrlDecoder().decode(parts[0]), Map.class);
             long expiresAt = ((Number) payload.get("exp")).longValue();
             if (expiresAt < Instant.now().getEpochSecond()) return null;
-            Long id = ((Number) payload.get("id")).longValue();
-            Account account = accountMapper.selectById(id);
-            if (account == null || account.getStatus() == null || account.getStatus() != 1) return null;
-            return new SessionAccount(account.getId(), account.getUsername(), account.getRole());
+            return activeAccount(payload);
         } catch (Exception ignored) {
             return null;
         }
+    }
+
+    /**
+     * Verifies the signature and account state without checking token expiration.
+     * This is intentionally limited to the GitHub-backed renewal flow.
+     */
+    public SessionAccount verifyIgnoringExpiry(String token) {
+        try {
+            String[] parts = token.split("\\.", 2);
+            if (parts.length != 2 || !MessageDigest.isEqual(signature(parts[0]).getBytes(StandardCharsets.UTF_8),
+                    parts[1].getBytes(StandardCharsets.UTF_8))) return null;
+            @SuppressWarnings("unchecked") Map<String, Object> payload = objectMapper.readValue(
+                    Base64.getUrlDecoder().decode(parts[0]), Map.class);
+            return activeAccount(payload);
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
+    private SessionAccount activeAccount(Map<String, Object> payload) {
+        Long id = ((Number) payload.get("id")).longValue();
+        Account account = accountMapper.selectById(id);
+        if (account == null || account.getStatus() == null || account.getStatus() != 1) return null;
+        return new SessionAccount(account.getId(), account.getUsername(), account.getRole());
     }
 
     private String signature(String payload) throws Exception {
