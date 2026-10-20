@@ -14,6 +14,9 @@ spring:
   threads:
     virtual:
       enabled: true
+  jackson:
+    date-format: yyyy-MM-dd HH:mm:ss
+    time-zone: Asia/Shanghai
   lifecycle:
     timeout-per-shutdown-phase: 30s
   datasource:
