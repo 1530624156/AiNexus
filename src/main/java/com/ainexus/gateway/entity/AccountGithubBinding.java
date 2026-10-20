@@ -12,6 +12,9 @@ public class AccountGithubBinding {
     @TableId private Long accountId;
     private String githubLogin;
     private String accessToken;
+    private String refreshToken;
+    private LocalDateTime accessTokenExpiresAt;
+    private LocalDateTime refreshTokenExpiresAt;
     private LocalDateTime starVerifiedAt;
     private LocalDateTime createTime;
     private LocalDateTime updateTime;

@@ -20,10 +20,10 @@ import java.io.IOException;
 @RequiredArgsConstructor
 public class UserGithubController {
     private final GithubStarGateService service;
-    @GetMapping("/status") public Status status(HttpServletRequest request) { GithubStarGateService.Binding b=service.binding(user(request).id()); GithubStarGateService.Setting s=service.settings(); return new Status(s.enabled(),s.repository(),b.bound(),b.githubLogin(),b.starVerifiedAt()); }
+    @GetMapping("/status") public Status status(HttpServletRequest request) { GithubStarGateService.Binding b=service.binding(user(request).id()); GithubStarGateService.Setting s=service.settings(); return new Status(s.enabled(),s.repository(),b.bound(),b.githubLogin(),b.starVerifiedAt(),b.refreshable(),b.accessTokenExpiresAt(),b.refreshTokenExpiresAt()); }
     @GetMapping("/authorize") public Authorize authorize(HttpServletRequest request) { return new Authorize(service.authorizationUrl(user(request).id())); }
     @DeleteMapping("/binding") public void unbind(HttpServletRequest request) { service.unbind(user(request).id()); }
     @GetMapping("/callback") public void callback(@RequestParam String code,@RequestParam String state,HttpServletResponse response) throws IOException { service.bindFromCallback(code,state); response.sendRedirect("/"); }
     private ConsoleSessionService.SessionAccount user(HttpServletRequest request){ConsoleSessionService.SessionAccount a=(ConsoleSessionService.SessionAccount)request.getAttribute(ConsoleAuthInterceptor.ATTRIBUTE);if(a==null||!"USER".equals(a.role()))throw BizException.forbidden("user_role_required","User role is required");return a;}
-    public record Status(boolean enabled,String repository,boolean bound,String githubLogin,Object starVerifiedAt){} public record Authorize(String authorizationUrl){}
+    public record Status(boolean enabled,String repository,boolean bound,String githubLogin,Object starVerifiedAt,boolean refreshable,Object accessTokenExpiresAt,Object refreshTokenExpiresAt){} public record Authorize(String authorizationUrl){}
 }

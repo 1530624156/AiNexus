@@ -17,6 +17,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.scheduling.annotation.Scheduled;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import org.springframework.util.StringUtils;
 
 import javax.crypto.Mac;
@@ -69,11 +70,28 @@ public class GithubStarGateService {
     }
     public void bindFromCallback(String code, String state) {
         State parsed = verifyState(state); Setting setting = settings(); requireOAuth(setting);
-        String token = requestToken(setting, code); String login = requestLogin(token);
-        AccountGithubBinding binding = new AccountGithubBinding(); binding.setAccountId(parsed.accountId()); binding.setGithubLogin(login); binding.setAccessToken(token); binding.setStarVerifiedAt(null);
-        if (bindingMapper.selectById(parsed.accountId()) == null) bindingMapper.insert(binding); else bindingMapper.updateById(binding);
+        OAuthToken token = requestToken(setting, code); String login = requestLogin(token.accessToken());
+        AccountGithubBinding binding = new AccountGithubBinding();
+        binding.setAccountId(parsed.accountId()); binding.setGithubLogin(login); binding.setAccessToken(token.accessToken());
+        binding.setRefreshToken(token.refreshToken()); binding.setAccessTokenExpiresAt(token.accessTokenExpiresAt());
+        binding.setRefreshTokenExpiresAt(token.refreshTokenExpiresAt()); binding.setStarVerifiedAt(null);
+        if (bindingMapper.selectById(parsed.accountId()) == null) bindingMapper.insert(binding);
+        else bindingMapper.update(null, new LambdaUpdateWrapper<AccountGithubBinding>()
+                .eq(AccountGithubBinding::getAccountId, parsed.accountId())
+                .set(AccountGithubBinding::getGithubLogin, login)
+                .set(AccountGithubBinding::getAccessToken, token.accessToken())
+                .set(AccountGithubBinding::getRefreshToken, token.refreshToken())
+                .set(AccountGithubBinding::getAccessTokenExpiresAt, token.accessTokenExpiresAt())
+                .set(AccountGithubBinding::getRefreshTokenExpiresAt, token.refreshTokenExpiresAt())
+                .set(AccountGithubBinding::getStarVerifiedAt, null));
     }
-    public Binding binding(Long accountId) { AccountGithubBinding b = bindingMapper.selectById(accountId); return b == null ? new Binding(false, null, null) : new Binding(true, b.getGithubLogin(), b.getStarVerifiedAt()); }
+    public Binding binding(Long accountId) {
+        AccountGithubBinding b = bindingMapper.selectById(accountId);
+        return b == null ? new Binding(false, null, null, false, null, null)
+                : new Binding(true, b.getGithubLogin(), b.getStarVerifiedAt(),
+                        StringUtils.hasText(b.getRefreshToken()) && (b.getRefreshTokenExpiresAt() == null || b.getRefreshTokenExpiresAt().isAfter(LocalDateTime.now())),
+                        b.getAccessTokenExpiresAt(), b.getRefreshTokenExpiresAt());
+    }
     public void unbind(Long accountId) { bindingMapper.deleteById(accountId); }
     /** Network check used only while creating a new USER API key, never in /v1 request processing. */
     public void verifyForKeyCreation(Long accountId) {
@@ -81,8 +99,11 @@ public class GithubStarGateService {
         AccountGithubBinding binding = bindingMapper.selectById(accountId);
         String repositoryUrl = "https://github.com/" + setting.repository();
         if (binding == null) throw BizException.forbidden("github_binding_required", "创建失败，请先绑定 GitHub 账号并为 " + repositoryUrl + " 点击 Star 后再创建或启用 API Key");
-        if (!hasStar(binding.getAccessToken(), setting.repository())) throw BizException.forbidden("github_star_required", "创建失败，请先为 " + repositoryUrl + " 点击 Star 后再创建或启用 API Key");
-        binding.setStarVerifiedAt(LocalDateTime.now()); bindingMapper.updateById(binding);
+        StarStatus status = checkStar(binding, setting);
+        if (status == StarStatus.STARRED) { binding.setStarVerifiedAt(LocalDateTime.now()); bindingMapper.updateById(binding); return; }
+        if (status == StarStatus.TOKEN_INVALID) throw BizException.forbidden("github_authorization_invalid", "GitHub 授权无效或已被撤销，请重新绑定 GitHub 账号");
+        if (status == StarStatus.UNAVAILABLE || status == StarStatus.RATE_LIMITED) throw BizException.forbidden("github_star_check_failed", "Unable to verify GitHub Star status");
+        throw BizException.forbidden("github_star_required", "创建失败，请先为 " + repositoryUrl + " 点击 Star 后再创建或启用 API Key");
     }
 
     @Scheduled(fixedDelay = 60_000, initialDelay = 30_000)
@@ -127,7 +148,7 @@ public class GithubStarGateService {
                 if (disabled > 0) { changed = true; disabledKeys += disabled; }
                 continue;
             }
-            StarStatus status = checkStar(binding.getAccessToken(), setting.repository());
+            StarStatus status = checkStar(binding, setting);
             if (status == StarStatus.STARRED) {
                 binding.setStarVerifiedAt(LocalDateTime.now());
                 bindingMapper.updateById(binding);
@@ -153,11 +174,15 @@ public class GithubStarGateService {
         return disabled;
     }
 
-    /** 仅 204 表示已 Star；401/403/5xx 与网络异常都必须与“未 Star”区分开，否则无法解释校验结果。 */
-    private StarStatus checkStar(String token, String repository) {
-        if (!StringUtils.hasText(token) || !StringUtils.hasText(repository)) return StarStatus.UNAVAILABLE;
+    /** Checks Star status and renews an expiring OAuth access token before it becomes unusable. */
+    private StarStatus checkStar(AccountGithubBinding binding, Setting setting) {
+        if (binding == null || !StringUtils.hasText(binding.getAccessToken()) || !StringUtils.hasText(setting.repository())) return StarStatus.UNAVAILABLE;
         try {
-            HttpResponse<String> response = http.send(api("/user/starred/" + repository, token), HttpResponse.BodyHandlers.ofString());
+            renewAccessTokenIfNeeded(binding, setting, false);
+            HttpResponse<String> response = http.send(api("/user/starred/" + setting.repository(), binding.getAccessToken()), HttpResponse.BodyHandlers.ofString());
+            if (response.statusCode() == 401 && renewAccessTokenIfNeeded(binding, setting, true)) {
+                response = http.send(api("/user/starred/" + setting.repository(), binding.getAccessToken()), HttpResponse.BodyHandlers.ofString());
+            }
             return switch (response.statusCode()) {
                 case 204 -> StarStatus.STARRED;
                 case 404 -> StarStatus.NOT_STARRED;
@@ -166,13 +191,59 @@ public class GithubStarGateService {
                 default -> StarStatus.UNAVAILABLE;
             };
         } catch (Exception e) {
-            log.warn("[github-star] github star check failed for repository '{}': {}", repository, e.toString());
+            log.warn("[github-star] github star check failed for repository '{}': {}", setting.repository(), e.toString());
             return StarStatus.UNAVAILABLE;
         }
     }
-    private String requestToken(Setting s, String code) { try { HttpRequest req = HttpRequest.newBuilder(URI.create("https://github.com/login/oauth/access_token")).header("Accept", "application/json").header("Content-Type", "application/x-www-form-urlencoded").POST(HttpRequest.BodyPublishers.ofString("client_id="+enc(s.clientId())+"&client_secret="+enc(s.clientSecret())+"&code="+enc(code)+"&redirect_uri="+enc(callbackUrl(s)))).build(); JsonNode json = objectMapper.readTree(http.send(req, HttpResponse.BodyHandlers.ofString()).body()); if (!json.hasNonNull("access_token")) throw BizException.badRequest("github_oauth_failed", "GitHub OAuth authorization failed"); return json.get("access_token").asText(); } catch (BizException e) { throw e; } catch (Exception e) { throw BizException.badRequest("github_oauth_failed", "Unable to complete GitHub authorization"); } }
+
+    /** Refreshes shortly before expiration, or forces one retry after GitHub returns 401. */
+    private synchronized boolean renewAccessTokenIfNeeded(AccountGithubBinding binding, Setting setting, boolean force) {
+        if (!StringUtils.hasText(binding.getRefreshToken())) return false;
+        if (binding.getRefreshTokenExpiresAt() != null && !binding.getRefreshTokenExpiresAt().isAfter(LocalDateTime.now())) return false;
+        LocalDateTime expiresAt = binding.getAccessTokenExpiresAt();
+        if (!force && (expiresAt == null || expiresAt.isAfter(LocalDateTime.now().plusMinutes(5)))) return false;
+        try {
+            OAuthToken refreshed = requestToken(setting, "refresh_token", binding.getRefreshToken());
+            binding.setAccessToken(refreshed.accessToken());
+            if (StringUtils.hasText(refreshed.refreshToken())) binding.setRefreshToken(refreshed.refreshToken());
+            binding.setAccessTokenExpiresAt(refreshed.accessTokenExpiresAt());
+            if (refreshed.refreshTokenExpiresAt() != null) binding.setRefreshTokenExpiresAt(refreshed.refreshTokenExpiresAt());
+            bindingMapper.updateById(binding);
+            log.info("[github-star] refreshed GitHub authorization for @{}", binding.getGithubLogin());
+            return true;
+        } catch (BizException e) {
+            log.warn("[github-star] unable to refresh GitHub authorization for @{}: {}", binding.getGithubLogin(), e.getMessage());
+            return false;
+        }
+    }
+
+    private OAuthToken requestToken(Setting setting, String code) {
+        return requestToken(setting, "authorization_code", code);
+    }
+
+    private OAuthToken requestToken(Setting setting, String grantType, String credential) {
+        try {
+            String body = "client_id=" + enc(setting.clientId()) + "&client_secret=" + enc(setting.clientSecret())
+                    + ("refresh_token".equals(grantType)
+                    ? "&grant_type=refresh_token&refresh_token=" + enc(credential)
+                    : "&code=" + enc(credential) + "&redirect_uri=" + enc(callbackUrl(setting)));
+            HttpRequest request = HttpRequest.newBuilder(URI.create("https://github.com/login/oauth/access_token"))
+                    .header("Accept", "application/json").header("Content-Type", "application/x-www-form-urlencoded")
+                    .POST(HttpRequest.BodyPublishers.ofString(body)).build();
+            JsonNode json = objectMapper.readTree(http.send(request, HttpResponse.BodyHandlers.ofString()).body());
+            if (!json.hasNonNull("access_token")) throw BizException.badRequest("github_oauth_failed", "GitHub OAuth authorization failed");
+            return new OAuthToken(json.get("access_token").asText(), text(json, "refresh_token"),
+                    expiry(json, "expires_in"), expiry(json, "refresh_token_expires_in"));
+        } catch (BizException e) { throw e; } catch (Exception e) { throw BizException.badRequest("github_oauth_failed", "Unable to complete GitHub authorization"); }
+    }
+
+    private LocalDateTime expiry(JsonNode json, String field) {
+        long seconds = json.path(field).asLong(0);
+        return seconds > 0 ? LocalDateTime.now().plusSeconds(seconds) : null;
+    }
+
+    private String text(JsonNode json, String field) { return json.hasNonNull(field) ? json.get(field).asText() : null; }
     private String requestLogin(String token) { try { HttpRequest req = api("/user", token); JsonNode json = objectMapper.readTree(http.send(req, HttpResponse.BodyHandlers.ofString()).body()); if (!json.hasNonNull("login")) throw BizException.badRequest("github_oauth_failed", "Unable to read GitHub account"); return json.get("login").asText(); } catch (BizException e) { throw e; } catch (Exception e) { throw BizException.badRequest("github_oauth_failed", "Unable to read GitHub account"); } }
-    private boolean hasStar(String token, String repository) { try { HttpResponse<String> response = http.send(api("/user/starred/" + repository, token), HttpResponse.BodyHandlers.ofString()); return response.statusCode() == 204; } catch (Exception e) { throw BizException.forbidden("github_star_check_failed", "Unable to verify GitHub Star status"); } }
     private HttpRequest api(String path, String token) { return HttpRequest.newBuilder(URI.create(GITHUB_API + path)).header("Accept", "application/vnd.github+json").header("Authorization", "Bearer " + token).header("X-GitHub-Api-Version", "2022-11-28").GET().build(); }
     private String state(Long id, long time) { try { String payload = id + ":" + time; return Base64.getUrlEncoder().withoutPadding().encodeToString(payload.getBytes(StandardCharsets.UTF_8)) + "." + sign(payload); } catch (Exception e) { throw new IllegalStateException("Unable to create GitHub authorization state", e); } }
     private State verifyState(String state) { try { String[] p=state.split("\\.",2); String payload=new String(Base64.getUrlDecoder().decode(p[0]),StandardCharsets.UTF_8); if(p.length!=2||!MessageDigest.isEqual(sign(payload).getBytes(StandardCharsets.UTF_8),p[1].getBytes(StandardCharsets.UTF_8))) throw new Exception(); String[] v=payload.split(":",2); if(Instant.now().getEpochSecond()-Long.parseLong(v[1])>600) throw new Exception(); return new State(Long.parseLong(v[0])); } catch(Exception e){ throw BizException.badRequest("invalid_github_state","GitHub authorization state is invalid or expired"); } }
@@ -183,7 +254,7 @@ public class GithubStarGateService {
     private String cleanRepository(String value) { if(!StringUtils.hasText(value)) return null; String v=value.trim().replaceFirst("^https?://github\\.com/","").replaceAll("/$",""); if(!v.matches("[^/\\s]+/[^/\\s]+")) throw BizException.badRequest("invalid_github_repository","Repository must be owner/repository"); return v; }
     private String cleanBaseUrl(String value) { if(!StringUtils.hasText(value)) return null; try { URI u=URI.create(value.trim().replaceAll("/+$","")); if(!"http".equalsIgnoreCase(u.getScheme())&&!"https".equalsIgnoreCase(u.getScheme())) throw new Exception(); return u.toString(); } catch(Exception e){throw BizException.badRequest("invalid_public_base_url","Public base URL must use HTTP or HTTPS");} }
     private String blankToNull(String s){return StringUtils.hasText(s)?s.trim():null;} private String enc(String s){return URLEncoder.encode(s,StandardCharsets.UTF_8);}
-    public record Update(Boolean enabled,String repository,String publicBaseUrl,String oauthClientId,String oauthClientSecret,String dailyCheckTime){} public record Setting(boolean enabled,String repository,String publicBaseUrl,String clientId,String clientSecret,String dailyCheckTime){static Setting defaults(){return new Setting(false,null,null,null,null,"06:00");}} public record Binding(boolean bound,String githubLogin,LocalDateTime starVerifiedAt){} public record CheckResult(int checkedUsers, int verifiedBindings, int disabledKeys, List<CheckIssue> unverified){} public record CheckIssue(String username, String githubLogin, String reason){} private record State(Long accountId){}
+    public record Update(Boolean enabled,String repository,String publicBaseUrl,String oauthClientId,String oauthClientSecret,String dailyCheckTime){} public record Setting(boolean enabled,String repository,String publicBaseUrl,String clientId,String clientSecret,String dailyCheckTime){static Setting defaults(){return new Setting(false,null,null,null,null,"06:00");}} public record Binding(boolean bound,String githubLogin,LocalDateTime starVerifiedAt,boolean refreshable,LocalDateTime accessTokenExpiresAt,LocalDateTime refreshTokenExpiresAt){} public record CheckResult(int checkedUsers, int verifiedBindings, int disabledKeys, List<CheckIssue> unverified){} public record CheckIssue(String username, String githubLogin, String reason){} private record OAuthToken(String accessToken,String refreshToken,LocalDateTime accessTokenExpiresAt,LocalDateTime refreshTokenExpiresAt){} private record State(Long accountId){}
 
     private enum StarStatus {
         STARRED(null, false), NOT_BOUND("未绑定 GitHub", true), NOT_STARRED("未 Star 该仓库", true),
