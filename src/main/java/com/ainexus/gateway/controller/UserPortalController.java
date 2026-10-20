@@ -100,7 +100,7 @@ public class UserPortalController {
     }
 
     private long sum(List<RequestAuditLog> rows, java.util.function.Function<RequestAuditLog, Long> field) { return rows.stream().map(field).filter(java.util.Objects::nonNull).mapToLong(Long::longValue).sum(); }
-    private double cacheHitRate(long inputTokens, long cacheTokens) { return inputTokens <= 0 ? 0D : Math.round(cacheTokens * 10_000D / inputTokens) / 100D; }
+    private double cacheHitRate(long inputTokens, long cacheTokens) { long totalPromptTokens = inputTokens + cacheTokens; return totalPromptTokens <= 0 ? 0D : Math.round(cacheTokens * 10_000D / totalPromptTokens) / 100D; }
     private ConsoleSessionService.SessionAccount account(HttpServletRequest request) { return (ConsoleSessionService.SessionAccount) request.getAttribute(ConsoleAuthInterceptor.ATTRIBUTE); }
     private String mask(String value) { return value.length() < 10 ? "********" : value.substring(0, 7) + "****" + value.substring(value.length() - 4); }
     private String randomKey() { byte[] bytes = new byte[24]; new SecureRandom().nextBytes(bytes); return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes); }

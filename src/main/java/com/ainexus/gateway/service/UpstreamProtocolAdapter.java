@@ -185,9 +185,14 @@ public class UpstreamProtocolAdapter {
             return;
         }
         ObjectNode usage = converted.putObject("usage");
-        usage.put("prompt_tokens", metrics.inputTokens() == null ? 0 : metrics.inputTokens());
-        usage.put("completion_tokens", metrics.outputTokens() == null ? 0 : metrics.outputTokens());
-        usage.put("total_tokens", metrics.totalTokens() == null ? 0 : metrics.totalTokens());
+        long inputTokens = metrics.inputTokens() == null ? 0 : metrics.inputTokens();
+        long outputTokens = metrics.outputTokens() == null ? 0 : metrics.outputTokens();
+        long cacheTokens = metrics.cacheReadTokens() == null ? 0 : metrics.cacheReadTokens();
+        // Preserve OpenAI's public usage convention: prompt_tokens includes cache reads.
+        // Audit parsing splits it back into non-cached input and cache_tokens.
+        usage.put("prompt_tokens", inputTokens + cacheTokens);
+        usage.put("completion_tokens", outputTokens);
+        usage.put("total_tokens", inputTokens + outputTokens + cacheTokens);
         if (metrics.cacheReadTokens() != null || metrics.cacheWriteTokens() != null) {
             ObjectNode details = usage.putObject("prompt_tokens_details");
             if (metrics.cacheReadTokens() != null) details.put("cached_tokens", metrics.cacheReadTokens());

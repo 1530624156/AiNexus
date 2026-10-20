@@ -34,11 +34,14 @@ public class AuditLogService {
                 row.setProtocolPath(truncate(event.protocolPath(), 256));
                 row.setModelGroupNames(truncate(event.modelGroupNames(), 1000));
                 row.setUserGroupNames(truncate(event.userGroupNames(), 1000));
+                long inputTokens = zero(event.inputTokens());
+                long outputTokens = zero(event.outputTokens());
+                long cacheTokens = zero(event.cacheTokens());
                 row.setPromptTokens(event.inputTokens() == null ? null : event.inputTokens().intValue());
-                row.setInputTokens(zero(event.inputTokens()));
-                row.setOutputTokens(zero(event.outputTokens()));
-                row.setTotalTokens(event.totalTokens() == null ? zero(event.inputTokens()) + zero(event.outputTokens()) : zero(event.totalTokens()));
-                row.setCacheTokens(zero(event.cacheTokens()));
+                row.setInputTokens(inputTokens);
+                row.setOutputTokens(outputTokens);
+                row.setCacheTokens(cacheTokens);
+                row.setTotalTokens(inputTokens + outputTokens + cacheTokens);
                 row.setStatusCode(event.statusCode());
                 row.setUpstreamStatusCode(event.upstreamStatusCode());
                 row.setLatencyMs(event.latencyMs());

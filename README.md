@@ -99,7 +99,7 @@ curl http://localhost:8080/v1/models \
 
 ### 接真实厂商
 
-1. 新数据库执行 `src/main/resources/sql/schema.sql`；已有数据库按版本顺序执行 `src/main/resources/sql/migration/` 中尚未执行的脚本。升级 GitHub Star 准入时，必须执行 `V15__github_oauth_refresh_tokens.sql`。若需要 GitHub OAuth 自动续期，还需在 GitHub OAuth App 的设置中开启 **Expire user authorization tokens**，然后让已绑定用户重新授权一次，以获取 refresh token。
+1. 新数据库执行 `src/main/resources/sql/schema.sql`；已有数据库按版本顺序执行 `src/main/resources/sql/migration/` 中尚未执行的脚本。升级 GitHub Star 准入时，必须执行 `V15__github_oauth_refresh_tokens.sql`；升级 Token 用量统计口径时，必须执行 `V16__normalize_audit_token_accounting.sql`。若需要 GitHub OAuth 自动续期，还需在 GitHub OAuth App 的设置中开启 **Expire user authorization tokens**，然后让已绑定用户重新授权一次，以获取 refresh token。
 2. 一个渠道可绑定多个模型。例如 BigModel 对接智谱并绑定三个 GLM 模型：
    ```sql
    INSERT INTO channel

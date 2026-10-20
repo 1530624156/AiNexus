@@ -24,15 +24,19 @@ public record UsageMetrics(Long inputTokens, Long outputTokens, Long totalTokens
         Long input = firstNumber(usage, "prompt_tokens", "input_tokens");
         Long output = firstNumber(usage, "completion_tokens", "output_tokens");
 
-        // Anthropic reports normal input separately from cache reads/writes. Normalize
-        // inputTokens to the full prompt size so cache-hit ratios are meaningful.
+        // The audit contract is non-cached input + output + cache read = total.
+        // OpenAI-compatible prompt_tokens already includes cache reads, while Anthropic
+        // reports normal input separately and reports cache creation as additional input.
         if (usage.has("cache_read_input_tokens") || usage.has("cache_creation_input_tokens")) {
-            input = sum(input, cacheRead, cacheWrite);
+            input = sum(input, cacheWrite);
+        } else if (input != null && cacheRead != null) {
+            input = Math.max(0L, input - cacheRead);
         }
-        Long total = number(usage, "total_tokens");
-        if (total == null && (input != null || output != null)) {
-            total = sum(input, output);
+        Long reportedTotal = number(usage, "total_tokens");
+        if (input == null && output == null && cacheRead == null && reportedTotal != null) {
+            input = reportedTotal;
         }
+        Long total = input == null && output == null && cacheRead == null ? reportedTotal : sum(input, output, cacheRead);
         if (input == null && output == null && total == null && cacheRead == null && cacheWrite == null) {
             return null;
         }
@@ -44,9 +48,13 @@ public record UsageMetrics(Long inputTokens, Long outputTokens, Long totalTokens
         if (other == null) {
             return this;
         }
-        return new UsageMetrics(max(inputTokens, other.inputTokens), max(outputTokens, other.outputTokens),
-                max(totalTokens, other.totalTokens), max(cacheReadTokens, other.cacheReadTokens),
-                max(cacheWriteTokens, other.cacheWriteTokens));
+        Long input = max(inputTokens, other.inputTokens);
+        Long output = max(outputTokens, other.outputTokens);
+        Long cacheRead = max(cacheReadTokens, other.cacheReadTokens);
+        Long cacheWrite = max(cacheWriteTokens, other.cacheWriteTokens);
+        Long total = input == null && output == null && cacheRead == null
+                ? max(totalTokens, other.totalTokens) : sum(input, output, cacheRead);
+        return new UsageMetrics(input, output, total, cacheRead, cacheWrite);
     }
 
     private static Long firstNumber(JsonNode node, String... paths) {

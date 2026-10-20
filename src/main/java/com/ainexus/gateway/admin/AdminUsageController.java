@@ -52,7 +52,7 @@ public class AdminUsageController {
         return new Totals(rows.size(), input, sum(rows, RequestAuditLog::getOutputTokens), sum(rows, RequestAuditLog::getTotalTokens), cache, cacheHitRate(input, cache));
     }
     private long sum(List<RequestAuditLog> rows, java.util.function.Function<RequestAuditLog, Long> value) { return rows.stream().map(value).filter(java.util.Objects::nonNull).mapToLong(Long::longValue).sum(); }
-    private double cacheHitRate(long inputTokens, long cacheTokens) { return inputTokens <= 0 ? 0D : Math.round(cacheTokens * 10_000D / inputTokens) / 100D; }
+    private double cacheHitRate(long inputTokens, long cacheTokens) { long totalPromptTokens = inputTokens + cacheTokens; return totalPromptTokens <= 0 ? 0D : Math.round(cacheTokens * 10_000D / totalPromptTokens) / 100D; }
     private List<Distribution> distribution(List<RequestAuditLog> rows, java.util.function.Function<RequestAuditLog, String> field) {
         Map<String, List<RequestAuditLog>> groups = new LinkedHashMap<>();
         rows.forEach(row -> { String raw = field.apply(row); if (!StringUtils.hasText(raw)) return; for (String name : raw.split(",")) groups.computeIfAbsent(name, ignored -> new java.util.ArrayList<>()).add(row); });
