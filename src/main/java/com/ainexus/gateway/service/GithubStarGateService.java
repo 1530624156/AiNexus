@@ -13,6 +13,7 @@ import com.ainexus.gateway.mapper.TokenMapper;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.scheduling.annotation.Scheduled;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
@@ -33,6 +34,7 @@ import java.util.Base64;
 
 /** GitHub OAuth binding and repository-star access enforcement for USER API keys. */
 @Service
+@Slf4j
 @RequiredArgsConstructor
 public class GithubStarGateService {
     private static final String GITHUB_API = "https://api.github.com";
@@ -86,22 +88,38 @@ public class GithubStarGateService {
         Setting setting = settings();
         if (!setting.enabled()) return;
         LocalDateTime now = LocalDateTime.now();
-        java.time.LocalTime configured = java.time.LocalTime.parse(setting.dailyCheckTime());
-        if (now.getHour() != configured.getHour() || now.getMinute() != configured.getMinute() || now.toLocalDate().equals(lastDailyCheck)) return;
-        verifyAllUsers(setting);
+        LocalDateTime dueAt = now.toLocalDate().atTime(java.time.LocalTime.parse(setting.dailyCheckTime()));
+        if (now.isBefore(dueAt) || now.toLocalDate().equals(lastDailyCheck)) return;
+        CheckResult result = verifyAllUsers(setting);
         lastDailyCheck = now.toLocalDate();
+        log.info("[github-star] scheduled check completed: checkedUsers={}, verifiedBindings={}, disabledKeys={}",
+                result.checkedUsers(), result.verifiedBindings(), result.disabledKeys());
     }
 
-    private void verifyAllUsers(Setting setting) {
+    public synchronized CheckResult runCheckNow() {
+        Setting setting = settings();
+        if (!setting.enabled()) throw BizException.badRequest("github_star_gate_disabled", "GitHub Star gate is disabled");
+        CheckResult result = verifyAllUsers(setting);
+        log.info("[github-star] manual check completed: checkedUsers={}, verifiedBindings={}, disabledKeys={}",
+                result.checkedUsers(), result.verifiedBindings(), result.disabledKeys());
+        return result;
+    }
+
+    private CheckResult verifyAllUsers(Setting setting) {
         boolean changed = false;
+        int checkedUsers = 0;
+        int verifiedBindings = 0;
+        int disabledKeys = 0;
         for (Account account : accountMapper.selectList(new LambdaQueryWrapper<Account>().eq(Account::getRole, "USER").eq(Account::getStatus, 1))) {
+            checkedUsers++;
             AccountGithubBinding binding = bindingMapper.selectById(account.getId());
             boolean starred = false;
             if (binding != null) { try { starred = hasStar(binding.getAccessToken(), setting.repository()); } catch (BizException ignored) { starred = false; } }
-            if (starred) { binding.setStarVerifiedAt(LocalDateTime.now()); bindingMapper.updateById(binding); continue; }
-            for (Token token : tokenMapper.selectList(new LambdaQueryWrapper<Token>().eq(Token::getAccountId, account.getId()).eq(Token::getStatus, 1))) { token.setStatus(0); tokenMapper.updateById(token); changed = true; }
+            if (starred) { binding.setStarVerifiedAt(LocalDateTime.now()); bindingMapper.updateById(binding); verifiedBindings++; continue; }
+            for (Token token : tokenMapper.selectList(new LambdaQueryWrapper<Token>().eq(Token::getAccountId, account.getId()).eq(Token::getStatus, 1))) { token.setStatus(0); tokenMapper.updateById(token); changed = true; disabledKeys++; }
         }
         if (changed) routeCacheService.refresh();
+        return new CheckResult(checkedUsers, verifiedBindings, disabledKeys);
     }
     private String requestToken(Setting s, String code) { try { HttpRequest req = HttpRequest.newBuilder(URI.create("https://github.com/login/oauth/access_token")).header("Accept", "application/json").header("Content-Type", "application/x-www-form-urlencoded").POST(HttpRequest.BodyPublishers.ofString("client_id="+enc(s.clientId())+"&client_secret="+enc(s.clientSecret())+"&code="+enc(code)+"&redirect_uri="+enc(callbackUrl(s)))).build(); JsonNode json = objectMapper.readTree(http.send(req, HttpResponse.BodyHandlers.ofString()).body()); if (!json.hasNonNull("access_token")) throw BizException.badRequest("github_oauth_failed", "GitHub OAuth authorization failed"); return json.get("access_token").asText(); } catch (BizException e) { throw e; } catch (Exception e) { throw BizException.badRequest("github_oauth_failed", "Unable to complete GitHub authorization"); } }
     private String requestLogin(String token) { try { HttpRequest req = api("/user", token); JsonNode json = objectMapper.readTree(http.send(req, HttpResponse.BodyHandlers.ofString()).body()); if (!json.hasNonNull("login")) throw BizException.badRequest("github_oauth_failed", "Unable to read GitHub account"); return json.get("login").asText(); } catch (BizException e) { throw e; } catch (Exception e) { throw BizException.badRequest("github_oauth_failed", "Unable to read GitHub account"); } }
@@ -116,5 +134,5 @@ public class GithubStarGateService {
     private String cleanRepository(String value) { if(!StringUtils.hasText(value)) return null; String v=value.trim().replaceFirst("^https?://github\\.com/","").replaceAll("/$",""); if(!v.matches("[^/\\s]+/[^/\\s]+")) throw BizException.badRequest("invalid_github_repository","Repository must be owner/repository"); return v; }
     private String cleanBaseUrl(String value) { if(!StringUtils.hasText(value)) return null; try { URI u=URI.create(value.trim().replaceAll("/+$","")); if(!"http".equalsIgnoreCase(u.getScheme())&&!"https".equalsIgnoreCase(u.getScheme())) throw new Exception(); return u.toString(); } catch(Exception e){throw BizException.badRequest("invalid_public_base_url","Public base URL must use HTTP or HTTPS");} }
     private String blankToNull(String s){return StringUtils.hasText(s)?s.trim():null;} private String enc(String s){return URLEncoder.encode(s,StandardCharsets.UTF_8);}
-    public record Update(Boolean enabled,String repository,String publicBaseUrl,String oauthClientId,String oauthClientSecret,String dailyCheckTime){} public record Setting(boolean enabled,String repository,String publicBaseUrl,String clientId,String clientSecret,String dailyCheckTime){static Setting defaults(){return new Setting(false,null,null,null,null,"06:00");}} public record Binding(boolean bound,String githubLogin,LocalDateTime starVerifiedAt){} private record State(Long accountId){}
+    public record Update(Boolean enabled,String repository,String publicBaseUrl,String oauthClientId,String oauthClientSecret,String dailyCheckTime){} public record Setting(boolean enabled,String repository,String publicBaseUrl,String clientId,String clientSecret,String dailyCheckTime){static Setting defaults(){return new Setting(false,null,null,null,null,"06:00");}} public record Binding(boolean bound,String githubLogin,LocalDateTime starVerifiedAt){} public record CheckResult(int checkedUsers, int verifiedBindings, int disabledKeys){} private record State(Long accountId){}
 }
