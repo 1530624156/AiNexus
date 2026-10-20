@@ -1,6 +1,7 @@
 package com.ainexus.gateway.service;
 
 import com.ainexus.gateway.common.BizException;
+import com.ainexus.gateway.config.GatewayProperties;
 import com.ainexus.gateway.route.ChannelProtocol;
 import com.ainexus.gateway.route.ChannelRoute;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -26,6 +27,7 @@ public class UpstreamProtocolAdapter {
     private static final String ANTHROPIC_VERSION = "2023-06-01";
 
     private final ObjectMapper objectMapper;
+    private final GatewayProperties gatewayProperties;
 
     public AdaptedRequest adaptRequest(byte[] openAiBody, boolean stream, ChannelRoute route) throws IOException {
         ChannelProtocol protocol = ChannelProtocol.parse(route.getProtocol());
@@ -118,6 +120,7 @@ public class UpstreamProtocolAdapter {
                 targetMessage.set("content", content);
             }
         }
+        addAnthropicCacheCheckpoint(target, messages);
         return new AdaptedRequest(write(target), defaultPath(ChannelProtocol.ANTHROPIC_MESSAGES), "x-api-key", "", ANTHROPIC_VERSION);
     }
 
@@ -127,6 +130,21 @@ public class UpstreamProtocolAdapter {
         } else if (!content.isMissingNode()) {
             target.set("system", content);
         }
+    }
+
+    /** Adds one checkpoint only for a stable, sizeable system prefix; short one-shot prompts cost more to write than save. */
+    private void addAnthropicCacheCheckpoint(ObjectNode target, ArrayNode messages) {
+        GatewayProperties.PromptCache cache = gatewayProperties.getPromptCache();
+        JsonNode system = target.path("system");
+        if (!cache.isAnthropicCacheControl() || !system.isTextual() || system.asText().length() < cache.getMinCacheableChars()) {
+            return;
+        }
+        ArrayNode blocks = objectMapper.createArrayNode();
+        ObjectNode block = blocks.addObject();
+        block.put("type", "text");
+        block.put("text", system.asText());
+        block.putObject("cache_control").put("type", "ephemeral");
+        target.set("system", blocks);
     }
 
     private byte[] responsesToChatCompletion(byte[] body, ChannelRoute route) throws IOException {
@@ -144,14 +162,7 @@ public class UpstreamProtocolAdapter {
             content = result.toString();
         }
         ObjectNode converted = chatCompletionEnvelope(route, root.path("id").asText(null), content);
-        JsonNode usage = root.path("usage");
-        if (usage.isObject()) {
-            ObjectNode convertedUsage = converted.putObject("usage");
-            convertedUsage.put("prompt_tokens", usage.path("input_tokens").asInt(0));
-            convertedUsage.put("completion_tokens", usage.path("output_tokens").asInt(0));
-            convertedUsage.put("total_tokens", usage.path("total_tokens").asInt(
-                    usage.path("input_tokens").asInt(0) + usage.path("output_tokens").asInt(0)));
-        }
+        copyUsage(converted, root.path("usage"));
         return write(converted);
     }
 
@@ -164,14 +175,24 @@ public class UpstreamProtocolAdapter {
             }
         }
         ObjectNode converted = chatCompletionEnvelope(route, root.path("id").asText(null), content.toString());
-        JsonNode usage = root.path("usage");
-        if (usage.isObject()) {
-            ObjectNode convertedUsage = converted.putObject("usage");
-            convertedUsage.put("prompt_tokens", usage.path("input_tokens").asInt(0));
-            convertedUsage.put("completion_tokens", usage.path("output_tokens").asInt(0));
-            convertedUsage.put("total_tokens", usage.path("input_tokens").asInt(0) + usage.path("output_tokens").asInt(0));
-        }
+        copyUsage(converted, root.path("usage"));
         return write(converted);
+    }
+
+    private void copyUsage(ObjectNode converted, JsonNode upstreamUsage) {
+        UsageMetrics metrics = UsageMetrics.fromUsage(upstreamUsage);
+        if (metrics == null) {
+            return;
+        }
+        ObjectNode usage = converted.putObject("usage");
+        usage.put("prompt_tokens", metrics.inputTokens() == null ? 0 : metrics.inputTokens());
+        usage.put("completion_tokens", metrics.outputTokens() == null ? 0 : metrics.outputTokens());
+        usage.put("total_tokens", metrics.totalTokens() == null ? 0 : metrics.totalTokens());
+        if (metrics.cacheReadTokens() != null || metrics.cacheWriteTokens() != null) {
+            ObjectNode details = usage.putObject("prompt_tokens_details");
+            if (metrics.cacheReadTokens() != null) details.put("cached_tokens", metrics.cacheReadTokens());
+            if (metrics.cacheWriteTokens() != null) details.put("cache_creation_tokens", metrics.cacheWriteTokens());
+        }
     }
 
     private ObjectNode chatCompletionEnvelope(ChannelRoute route, String id, String content) {

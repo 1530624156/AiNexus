@@ -96,10 +96,11 @@ public class UserPortalController {
         long total = sum(rows, RequestAuditLog::getTotalTokens); long cache = sum(rows, RequestAuditLog::getCacheTokens);
         List<String> apiKeys = tokenMapper.selectList(new LambdaQueryWrapper<Token>().eq(Token::getAccountId, accountId)).stream().map(Token::getAppName).toList();
         List<String> models = requestAuditLogMapper.selectList(new LambdaQueryWrapper<RequestAuditLog>().eq(RequestAuditLog::getAccountId, accountId)).stream().map(RequestAuditLog::getRequestModel).filter(java.util.Objects::nonNull).distinct().sorted().toList();
-        return new UsageView(requests, errors, input, output, total, cache, apiKeys, models, userQuotaService.quotas(accountId));
+        return new UsageView(requests, errors, input, output, total, cache, cacheHitRate(input, cache), apiKeys, models, userQuotaService.quotas(accountId));
     }
 
     private long sum(List<RequestAuditLog> rows, java.util.function.Function<RequestAuditLog, Long> field) { return rows.stream().map(field).filter(java.util.Objects::nonNull).mapToLong(Long::longValue).sum(); }
+    private double cacheHitRate(long inputTokens, long cacheTokens) { return inputTokens <= 0 ? 0D : Math.round(cacheTokens * 10_000D / inputTokens) / 100D; }
     private ConsoleSessionService.SessionAccount account(HttpServletRequest request) { return (ConsoleSessionService.SessionAccount) request.getAttribute(ConsoleAuthInterceptor.ATTRIBUTE); }
     private String mask(String value) { return value.length() < 10 ? "********" : value.substring(0, 7) + "****" + value.substring(value.length() - 4); }
     private String randomKey() { byte[] bytes = new byte[24]; new SecureRandom().nextBytes(bytes); return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes); }
@@ -108,5 +109,5 @@ public class UserPortalController {
     public record ApiKeyCreated(Long id, String token, String remark) { }
     public record KeyStatusRequest(Integer status) { }
     public record QuotaView(String userGroup, String period, long quota, long used, Long remaining) { }
-    public record UsageView(long requests, long errors, long inputTokens, long outputTokens, long totalTokens, long cacheTokens, List<String> apiKeys, List<String> models, List<UserQuotaService.Quota> quotas) { }
+    public record UsageView(long requests, long errors, long inputTokens, long outputTokens, long totalTokens, long cacheTokens, double cacheHitRate, List<String> apiKeys, List<String> models, List<UserQuotaService.Quota> quotas) { }
 }

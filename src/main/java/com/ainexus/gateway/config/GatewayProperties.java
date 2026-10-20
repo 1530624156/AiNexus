@@ -28,6 +28,9 @@ public class GatewayProperties {
     /** CORS 配置 */
     private Cors cors = new Cors();
 
+    /** Prompt cache, usage reporting, and cache-affinity routing settings. */
+    private PromptCache promptCache = new PromptCache();
+
     /** 静态降级渠道: MySQL 不可用时的兜底路由, 亦可用于本地联调 Mock 上游 */
     private List<StaticChannel> degradedChannels = new ArrayList<>();
 
@@ -70,6 +73,18 @@ public class GatewayProperties {
     @Data
     public static class Cors {
         private String allowedOrigins = "*";
+    }
+
+    @Data
+    public static class PromptCache {
+        /** Request OpenAI-compatible SSE usage frames when the client did not opt out. */
+        private boolean streamUsage = true;
+        /** Emit Anthropic cache_control checkpoints for stable prompt prefixes. */
+        private boolean anthropicCacheControl = true;
+        /** Keep related conversations on one upstream account to preserve provider-side cache affinity. */
+        private boolean stickyRouting = true;
+        /** Avoid cache-write overhead for short prompts that are unlikely to benefit. */
+        private int minCacheableChars = 1500;
     }
 
     @Data

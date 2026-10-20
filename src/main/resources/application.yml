@@ -78,6 +78,12 @@ gateway:
     log-request: false
   cors:
     allowed-origins: "*"
+  # Prompt 缓存：stream-usage 让 SSE 末帧回传真实 usage；会话粘性避免多账号轮询击穿上游缓存。
+  prompt-cache:
+    stream-usage: true
+    anthropic-cache-control: true
+    sticky-routing: true
+    min-cacheable-chars: 1500
   # 降级路由: DB 不可用时兜底的静态渠道(同样支持 OpenAI 格式透传), 也可用于本地联调 Mock 上游
   degraded-channels:
     - model-name: mock-model

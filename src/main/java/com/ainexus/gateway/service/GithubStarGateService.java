@@ -30,7 +30,9 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.time.Instant;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.Base64;
+import java.util.List;
 
 /** GitHub OAuth binding and repository-star access enforcement for USER API keys. */
 @Service
@@ -92,17 +94,22 @@ public class GithubStarGateService {
         if (now.isBefore(dueAt) || now.toLocalDate().equals(lastDailyCheck)) return;
         CheckResult result = verifyAllUsers(setting);
         lastDailyCheck = now.toLocalDate();
-        log.info("[github-star] scheduled check completed: checkedUsers={}, verifiedBindings={}, disabledKeys={}",
-                result.checkedUsers(), result.verifiedBindings(), result.disabledKeys());
+        logCheck("scheduled", result);
     }
 
     public synchronized CheckResult runCheckNow() {
         Setting setting = settings();
         if (!setting.enabled()) throw BizException.badRequest("github_star_gate_disabled", "GitHub Star gate is disabled");
         CheckResult result = verifyAllUsers(setting);
-        log.info("[github-star] manual check completed: checkedUsers={}, verifiedBindings={}, disabledKeys={}",
-                result.checkedUsers(), result.verifiedBindings(), result.disabledKeys());
+        logCheck("manual", result);
         return result;
+    }
+
+    private void logCheck(String trigger, CheckResult result) {
+        log.info("[github-star] {} check completed: checkedUsers={}, verifiedBindings={}, disabledKeys={}",
+                trigger, result.checkedUsers(), result.verifiedBindings(), result.disabledKeys());
+        result.unverified().forEach(issue -> log.warn("[github-star] user='{}' github='{}' not verified: {}",
+                issue.username(), issue.githubLogin(), issue.reason()));
     }
 
     private CheckResult verifyAllUsers(Setting setting) {
@@ -110,16 +117,58 @@ public class GithubStarGateService {
         int checkedUsers = 0;
         int verifiedBindings = 0;
         int disabledKeys = 0;
+        List<CheckIssue> unverified = new ArrayList<>();
         for (Account account : accountMapper.selectList(new LambdaQueryWrapper<Account>().eq(Account::getRole, "USER").eq(Account::getStatus, 1))) {
             checkedUsers++;
             AccountGithubBinding binding = bindingMapper.selectById(account.getId());
-            boolean starred = false;
-            if (binding != null) { try { starred = hasStar(binding.getAccessToken(), setting.repository()); } catch (BizException ignored) { starred = false; } }
-            if (starred) { binding.setStarVerifiedAt(LocalDateTime.now()); bindingMapper.updateById(binding); verifiedBindings++; continue; }
-            for (Token token : tokenMapper.selectList(new LambdaQueryWrapper<Token>().eq(Token::getAccountId, account.getId()).eq(Token::getStatus, 1))) { token.setStatus(0); tokenMapper.updateById(token); changed = true; disabledKeys++; }
+            if (binding == null) {
+                unverified.add(new CheckIssue(account.getUsername(), null, StarStatus.NOT_BOUND.reason));
+                int disabled = disableEnabledKeys(account.getId());
+                if (disabled > 0) { changed = true; disabledKeys += disabled; }
+                continue;
+            }
+            StarStatus status = checkStar(binding.getAccessToken(), setting.repository());
+            if (status == StarStatus.STARRED) {
+                binding.setStarVerifiedAt(LocalDateTime.now());
+                bindingMapper.updateById(binding);
+                verifiedBindings++;
+                continue;
+            }
+            unverified.add(new CheckIssue(account.getUsername(), binding.getGithubLogin(), status.reason));
+            if (!status.shouldDisableKeys) continue;
+            int disabled = disableEnabledKeys(account.getId());
+            if (disabled > 0) { changed = true; disabledKeys += disabled; }
         }
         if (changed) routeCacheService.refresh();
-        return new CheckResult(checkedUsers, verifiedBindings, disabledKeys);
+        return new CheckResult(checkedUsers, verifiedBindings, disabledKeys, List.copyOf(unverified));
+    }
+
+    private int disableEnabledKeys(Long accountId) {
+        int disabled = 0;
+        for (Token token : tokenMapper.selectList(new LambdaQueryWrapper<Token>().eq(Token::getAccountId, accountId).eq(Token::getStatus, 1))) {
+            token.setStatus(0);
+            tokenMapper.updateById(token);
+            disabled++;
+        }
+        return disabled;
+    }
+
+    /** 仅 204 表示已 Star；401/403/5xx 与网络异常都必须与“未 Star”区分开，否则无法解释校验结果。 */
+    private StarStatus checkStar(String token, String repository) {
+        if (!StringUtils.hasText(token) || !StringUtils.hasText(repository)) return StarStatus.UNAVAILABLE;
+        try {
+            HttpResponse<String> response = http.send(api("/user/starred/" + repository, token), HttpResponse.BodyHandlers.ofString());
+            return switch (response.statusCode()) {
+                case 204 -> StarStatus.STARRED;
+                case 404 -> StarStatus.NOT_STARRED;
+                case 401 -> StarStatus.TOKEN_INVALID;
+                case 403 -> StarStatus.RATE_LIMITED;
+                default -> StarStatus.UNAVAILABLE;
+            };
+        } catch (Exception e) {
+            log.warn("[github-star] github star check failed for repository '{}': {}", repository, e.toString());
+            return StarStatus.UNAVAILABLE;
+        }
     }
     private String requestToken(Setting s, String code) { try { HttpRequest req = HttpRequest.newBuilder(URI.create("https://github.com/login/oauth/access_token")).header("Accept", "application/json").header("Content-Type", "application/x-www-form-urlencoded").POST(HttpRequest.BodyPublishers.ofString("client_id="+enc(s.clientId())+"&client_secret="+enc(s.clientSecret())+"&code="+enc(code)+"&redirect_uri="+enc(callbackUrl(s)))).build(); JsonNode json = objectMapper.readTree(http.send(req, HttpResponse.BodyHandlers.ofString()).body()); if (!json.hasNonNull("access_token")) throw BizException.badRequest("github_oauth_failed", "GitHub OAuth authorization failed"); return json.get("access_token").asText(); } catch (BizException e) { throw e; } catch (Exception e) { throw BizException.badRequest("github_oauth_failed", "Unable to complete GitHub authorization"); } }
     private String requestLogin(String token) { try { HttpRequest req = api("/user", token); JsonNode json = objectMapper.readTree(http.send(req, HttpResponse.BodyHandlers.ofString()).body()); if (!json.hasNonNull("login")) throw BizException.badRequest("github_oauth_failed", "Unable to read GitHub account"); return json.get("login").asText(); } catch (BizException e) { throw e; } catch (Exception e) { throw BizException.badRequest("github_oauth_failed", "Unable to read GitHub account"); } }
@@ -134,5 +183,14 @@ public class GithubStarGateService {
     private String cleanRepository(String value) { if(!StringUtils.hasText(value)) return null; String v=value.trim().replaceFirst("^https?://github\\.com/","").replaceAll("/$",""); if(!v.matches("[^/\\s]+/[^/\\s]+")) throw BizException.badRequest("invalid_github_repository","Repository must be owner/repository"); return v; }
     private String cleanBaseUrl(String value) { if(!StringUtils.hasText(value)) return null; try { URI u=URI.create(value.trim().replaceAll("/+$","")); if(!"http".equalsIgnoreCase(u.getScheme())&&!"https".equalsIgnoreCase(u.getScheme())) throw new Exception(); return u.toString(); } catch(Exception e){throw BizException.badRequest("invalid_public_base_url","Public base URL must use HTTP or HTTPS");} }
     private String blankToNull(String s){return StringUtils.hasText(s)?s.trim():null;} private String enc(String s){return URLEncoder.encode(s,StandardCharsets.UTF_8);}
-    public record Update(Boolean enabled,String repository,String publicBaseUrl,String oauthClientId,String oauthClientSecret,String dailyCheckTime){} public record Setting(boolean enabled,String repository,String publicBaseUrl,String clientId,String clientSecret,String dailyCheckTime){static Setting defaults(){return new Setting(false,null,null,null,null,"06:00");}} public record Binding(boolean bound,String githubLogin,LocalDateTime starVerifiedAt){} public record CheckResult(int checkedUsers, int verifiedBindings, int disabledKeys){} private record State(Long accountId){}
+    public record Update(Boolean enabled,String repository,String publicBaseUrl,String oauthClientId,String oauthClientSecret,String dailyCheckTime){} public record Setting(boolean enabled,String repository,String publicBaseUrl,String clientId,String clientSecret,String dailyCheckTime){static Setting defaults(){return new Setting(false,null,null,null,null,"06:00");}} public record Binding(boolean bound,String githubLogin,LocalDateTime starVerifiedAt){} public record CheckResult(int checkedUsers, int verifiedBindings, int disabledKeys, List<CheckIssue> unverified){} public record CheckIssue(String username, String githubLogin, String reason){} private record State(Long accountId){}
+
+    private enum StarStatus {
+        STARRED(null, false), NOT_BOUND("未绑定 GitHub", true), NOT_STARRED("未 Star 该仓库", true),
+        TOKEN_INVALID("GitHub 授权已失效，需重新绑定", true), RATE_LIMITED("GitHub 接口限流(403)，本次未停用 Key", false),
+        UNAVAILABLE("GitHub 校验失败或网络异常，本次未停用 Key", false);
+        private final String reason;
+        private final boolean shouldDisableKeys;
+        StarStatus(String reason, boolean shouldDisableKeys) { this.reason = reason; this.shouldDisableKeys = shouldDisableKeys; }
+    }
 }

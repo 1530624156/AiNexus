@@ -1,6 +1,7 @@
 package com.ainexus.gateway.service;
 
 import com.ainexus.gateway.common.ErrorResponses;
+import com.ainexus.gateway.config.GatewayProperties;
 import com.ainexus.gateway.route.ChannelProtocol;
 import com.ainexus.gateway.route.ChannelRoute;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -59,6 +60,7 @@ public class ProxyService {
     private final UpstreamProtocolAdapter upstreamProtocolAdapter;
     private final ObjectMapper objectMapper;
     private final GatewayRuntimeSettingsService settingsService;
+    private final GatewayProperties gatewayProperties;
 
     /** 请求侧 hop-by-hop 头(逐跳头), 不能透传给上游 */
     private static final Set<String> STRIP_REQUEST_HEADERS = Set.of(
@@ -76,7 +78,8 @@ public class ProxyService {
                         ChannelCircuitBreakerService channelCircuitBreakerService,
                         UpstreamProtocolAdapter upstreamProtocolAdapter,
                         ObjectMapper objectMapper,
-                         GatewayRuntimeSettingsService settingsService) {
+                         GatewayRuntimeSettingsService settingsService,
+                         GatewayProperties gatewayProperties) {
         this.relayClient = relayClient;
         this.streamRelayClient = streamRelayClient;
         this.channelConcurrencyService = channelConcurrencyService;
@@ -84,6 +87,7 @@ public class ProxyService {
         this.upstreamProtocolAdapter = upstreamProtocolAdapter;
         this.objectMapper = objectMapper;
         this.settingsService = settingsService;
+        this.gatewayProperties = gatewayProperties;
     }
 
     /**
@@ -141,8 +145,12 @@ public class ProxyService {
                            byte[] clientBody, boolean stream, ChannelRoute channel, boolean isLastCandidate)
             throws IOException {
         long upstreamStartedAt = System.nanoTime();
-        UpstreamProtocolAdapter.AdaptedRequest adapted = upstreamProtocolAdapter.adaptRequest(
-                rewriteModelIfNeeded(clientBody, channel), stream, channel);
+        ChannelProtocol protocol = ChannelProtocol.parse(channel.getProtocol());
+        byte[] rewrittenBody = rewriteModelIfNeeded(clientBody, channel);
+        boolean injectedStreamUsage = stream && protocol == ChannelProtocol.OPENAI_COMPLETIONS
+                && gatewayProperties.getPromptCache().isStreamUsage() && !hasStreamUsageOption(rewrittenBody);
+        byte[] upstreamBody = injectedStreamUsage ? enableStreamUsage(rewrittenBody) : rewrittenBody;
+        UpstreamProtocolAdapter.AdaptedRequest adapted = upstreamProtocolAdapter.adaptRequest(upstreamBody, stream, channel);
         Request upstreamRequest = buildUpstreamRequest(request, adapted, stream, channel);
         request.setAttribute("ainexus.audit.protocolPath", upstreamRequest.url().encodedPath());
         GatewayRuntimeSettingsService.Settings settings = settingsService.get();
@@ -154,6 +162,15 @@ public class ProxyService {
         Response upstream;
         try {
             upstream = call.execute();
+            // Some OpenAI-compatible providers reject stream_options. Retry once with
+            // the original body before exposing the upstream error to the client.
+            if (injectedStreamUsage && (upstream.code() == 400 || upstream.code() == 422)) {
+                upstream.close();
+                adapted = upstreamProtocolAdapter.adaptRequest(rewrittenBody, stream, channel);
+                upstreamRequest = buildUpstreamRequest(request, adapted, stream, channel);
+                call = client.newCall(upstreamRequest);
+                upstream = call.execute();
+            }
         } catch (IOException e) {
             throw new RetryableUpstreamException("connect fail: " + e.getMessage(), -1);
         }
@@ -176,7 +193,6 @@ public class ProxyService {
         // 从这里开始响应已进入"已提交区", 任何异常都无法再切换渠道
         try (Response ignored = upstream) {
             response.setStatus(upstream.code());
-            ChannelProtocol protocol = ChannelProtocol.parse(channel.getProtocol());
             ResponseBody body = upstream.body();
             if (body == null) {
                 return;
@@ -184,6 +200,7 @@ public class ProxyService {
             if (protocol != ChannelProtocol.OPENAI_COMPLETIONS && !stream) {
                 // Responses/Anthropic 协议响应结构不同，完整读取后归一化为 OpenAI Chat Completions JSON。
                 byte[] converted = upstreamProtocolAdapter.adaptResponse(body.bytes(), code, channel);
+                recordUsage(request, converted);
                 response.setContentType("application/json;charset=UTF-8");
                 response.getOutputStream().write(converted);
                 response.getOutputStream().flush();
@@ -209,12 +226,15 @@ public class ProxyService {
             }
             try (InputStream in = body.byteStream();
                  OutputStream out = response.getOutputStream()) {
+                SseUsageSniffer usageSniffer = new SseUsageSniffer(objectMapper);
                 byte[] buffer = new byte[8192];
                 int read;
                 while ((read = in.read(buffer)) != -1) {
+                    usageSniffer.feed(buffer, 0, read);
                     out.write(buffer, 0, read);
                     out.flush(); // 每个 chunk 立即刷回下游 — SSE 实时性的核心
                 }
+                applyUsage(request, usageSniffer.finish());
                 out.flush();
                 if (!isRetryableStatus(code)) {
                     channelCircuitBreakerService.recordSuccess(channel);
@@ -286,19 +306,43 @@ public class ProxyService {
     private void recordUsage(HttpServletRequest request, byte[] responseBytes) {
         try {
             JsonNode root = objectMapper.readTree(responseBytes);
-            JsonNode usage = root.path("usage");
-            if (!usage.isObject()) return;
-            long input = usage.path("prompt_tokens").asLong(usage.path("input_tokens").asLong(0));
-            long output = usage.path("completion_tokens").asLong(usage.path("output_tokens").asLong(0));
-            long total = usage.path("total_tokens").asLong(input + output);
-            JsonNode details = usage.path("prompt_tokens_details");
-            long cached = details.path("cached_tokens").asLong(usage.path("cache_read_input_tokens").asLong(0));
-            request.setAttribute("ainexus.audit.inputTokens", input);
-            request.setAttribute("ainexus.audit.outputTokens", output);
-            request.setAttribute("ainexus.audit.totalTokens", total);
-            request.setAttribute("ainexus.audit.cacheTokens", cached);
+            applyUsage(request, UsageMetrics.fromUsage(root.path("usage")));
         } catch (Exception e) {
             log.debug("[audit] response usage parsing skipped: {}", e.getMessage());
+        }
+    }
+
+    private void applyUsage(HttpServletRequest request, UsageMetrics usage) {
+        if (usage == null) {
+            return;
+        }
+        if (usage.inputTokens() != null) request.setAttribute("ainexus.audit.inputTokens", usage.inputTokens());
+        if (usage.outputTokens() != null) request.setAttribute("ainexus.audit.outputTokens", usage.outputTokens());
+        if (usage.totalTokens() != null) request.setAttribute("ainexus.audit.totalTokens", usage.totalTokens());
+        if (usage.cacheReadTokens() != null) request.setAttribute("ainexus.audit.cacheTokens", usage.cacheReadTokens());
+    }
+
+    private boolean hasStreamUsageOption(byte[] body) {
+        try {
+            JsonNode root = objectMapper.readTree(body);
+            return root.path("stream_options").has("include_usage");
+        } catch (Exception ignored) {
+            return false;
+        }
+    }
+
+    private byte[] enableStreamUsage(byte[] body) {
+        try {
+            JsonNode root = objectMapper.readTree(body);
+            if (!root.isObject()) {
+                return body;
+            }
+            ObjectNode options = ((ObjectNode) root).withObject("stream_options");
+            options.put("include_usage", true);
+            return objectMapper.writeValueAsBytes(root);
+        } catch (Exception e) {
+            log.debug("[relay] stream usage injection skipped: {}", e.getMessage());
+            return body;
         }
     }
 

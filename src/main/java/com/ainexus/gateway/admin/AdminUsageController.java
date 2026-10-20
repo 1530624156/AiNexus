@@ -47,18 +47,21 @@ public class AdminUsageController {
         return rows.stream().map(field).filter(StringUtils::hasText).distinct().sorted().toList();
     }
     private Totals totals(List<RequestAuditLog> rows) {
-        return new Totals(rows.size(), sum(rows, RequestAuditLog::getInputTokens), sum(rows, RequestAuditLog::getOutputTokens), sum(rows, RequestAuditLog::getTotalTokens), sum(rows, RequestAuditLog::getCacheTokens));
+        long input = sum(rows, RequestAuditLog::getInputTokens);
+        long cache = sum(rows, RequestAuditLog::getCacheTokens);
+        return new Totals(rows.size(), input, sum(rows, RequestAuditLog::getOutputTokens), sum(rows, RequestAuditLog::getTotalTokens), cache, cacheHitRate(input, cache));
     }
     private long sum(List<RequestAuditLog> rows, java.util.function.Function<RequestAuditLog, Long> value) { return rows.stream().map(value).filter(java.util.Objects::nonNull).mapToLong(Long::longValue).sum(); }
+    private double cacheHitRate(long inputTokens, long cacheTokens) { return inputTokens <= 0 ? 0D : Math.round(cacheTokens * 10_000D / inputTokens) / 100D; }
     private List<Distribution> distribution(List<RequestAuditLog> rows, java.util.function.Function<RequestAuditLog, String> field) {
         Map<String, List<RequestAuditLog>> groups = new LinkedHashMap<>();
         rows.forEach(row -> { String raw = field.apply(row); if (!StringUtils.hasText(raw)) return; for (String name : raw.split(",")) groups.computeIfAbsent(name, ignored -> new java.util.ArrayList<>()).add(row); });
-        return groups.entrySet().stream().map(entry -> { Totals totals = totals(entry.getValue()); return new Distribution(entry.getKey(), totals.requests(), totals.totalTokens(), totals.cacheTokens()); })
+        return groups.entrySet().stream().map(entry -> { Totals totals = totals(entry.getValue()); return new Distribution(entry.getKey(), totals.requests(), totals.totalTokens(), totals.cacheTokens(), totals.cacheHitRate()); })
                 .sorted(Comparator.comparingLong(Distribution::totalTokens).reversed()).toList();
     }
 
-    public record Totals(long requests, long inputTokens, long outputTokens, long totalTokens, long cacheTokens) { }
-    public record Distribution(String name, long requests, long totalTokens, long cacheTokens) { }
+    public record Totals(long requests, long inputTokens, long outputTokens, long totalTokens, long cacheTokens, double cacheHitRate) { }
+    public record Distribution(String name, long requests, long totalTokens, long cacheTokens, double cacheHitRate) { }
     public record UsageResponse(Totals totals, List<Distribution> providers, List<Distribution> upstreamAccounts, List<Distribution> modelGroups, List<Distribution> models, List<Distribution> userGroups, List<Distribution> users) { }
     public record FilterOptions(List<String> users, List<String> providers, List<String> apiTypes) { }
 }

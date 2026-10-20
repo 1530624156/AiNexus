@@ -26,6 +26,8 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.util.Arrays;
 import java.util.List;
 
@@ -95,7 +97,7 @@ public class ChatController {
             request.setAttribute("ainexus.audit.stream", stream);
 
             userGroupTokenQuotaService.check((Long) request.getAttribute("ainexus.auth.accountId"));
-            List<ChannelRoute> channels = channelService.route(model);
+            List<ChannelRoute> channels = channelService.route(model, cacheAffinityKey(model, root));
             log.info("[relay] model={} stream={} candidates={}", model, stream,
                     channels.stream().map(ChannelRoute::getChannelName).toList());
             long queueStartedAt = System.nanoTime();
@@ -151,6 +153,42 @@ public class ChatController {
             return Arrays.copyOfRange(body, 3, body.length);
         }
         return body;
+    }
+
+    /**
+     * Creates a stable cache-affinity key from the immutable beginning of a conversation.
+     * New turns append messages, so using the system prompt and first user message keeps the
+     * same upstream account selected while provider-side prompt caches remain reusable.
+     */
+    private String cacheAffinityKey(String model, JsonNode root) {
+        StringBuilder source = new StringBuilder(model).append('\n');
+        for (JsonNode message : root.withArray("messages")) {
+            String role = message.path("role").asText();
+            if (!"system".equals(role) && !"developer".equals(role) && !"user".equals(role)) {
+                continue;
+            }
+            JsonNode content = message.path("content");
+            if (!content.isTextual()) {
+                continue;
+            }
+            source.append(role).append(':').append(content.asText()).append('\n');
+            if ("user".equals(role)) {
+                break;
+            }
+        }
+        if (source.length() == model.length() + 1) {
+            return null;
+        }
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256").digest(source.toString().getBytes(StandardCharsets.UTF_8));
+            StringBuilder key = new StringBuilder(digest.length * 2);
+            for (byte value : digest) {
+                key.append(String.format("%02x", value));
+            }
+            return key.toString();
+        } catch (Exception ignored) {
+            return source.toString();
+        }
     }
 
     /** 仅作审计近似值：字符串 content 总字符数 / 4；复杂多模态消息返回 null。 */
