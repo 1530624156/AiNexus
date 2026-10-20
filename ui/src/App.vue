@@ -38,7 +38,7 @@ function formatDateTime(value: unknown) {
   const date = new Date(String(value).replace(' ', 'T'))
   return Number.isNaN(date.getTime()) ? String(value) : new Intl.DateTimeFormat('zh-CN', {
     year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23'
-  }).format(date).replaceAll('/', '-')
+  }).format(date).replace(/\//g, '-')
 }
 function onOverviewResize() { timelineChart?.resize() }
 // Element Plus table slots can infer DefaultRow in newer releases; narrow at the UI boundary.
