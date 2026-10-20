@@ -33,7 +33,7 @@ export default defineConfig({
         manualChunks: {
           vue: ['vue'],
           'element-plus': ['element-plus', '@element-plus/icons-vue'],
-          echarts: ['echarts/core', 'echarts/charts', 'echarts/components', 'echarts/renderers'],
+          echarts: ['echarts'],
         },
       },
     },
