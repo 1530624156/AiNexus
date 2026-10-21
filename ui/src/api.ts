@@ -49,7 +49,6 @@ api.interceptors.request.use((config) => {
   return config
 })
 
-export type Session = { token: string; username: string; role: 'ADMIN' | 'USER' }
 export type LoginOptions = { githubLoginOnly: boolean }
 let renewingSession: Promise<void> | null = null
 let sessionExpired = false
