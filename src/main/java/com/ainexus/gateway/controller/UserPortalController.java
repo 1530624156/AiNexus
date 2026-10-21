@@ -11,6 +11,7 @@ import com.ainexus.gateway.service.ModelAuthorizationService;
 import com.ainexus.gateway.service.RouteCacheService;
 import com.ainexus.gateway.service.UserQuotaService;
 import com.ainexus.gateway.service.GithubStarGateService;
+import com.ainexus.gateway.service.DailyTokenActivityService;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -41,6 +42,7 @@ public class UserPortalController {
     private final GatewayRuntimeSettingsService settingsService;
     private final UserQuotaService userQuotaService;
     private final GithubStarGateService githubStarGateService;
+    private final DailyTokenActivityService dailyTokenActivityService;
 
     @GetMapping("/models")
     public ModelCatalog models(HttpServletRequest request) {
@@ -97,6 +99,15 @@ public class UserPortalController {
         List<String> apiKeys = tokenMapper.selectList(new LambdaQueryWrapper<Token>().eq(Token::getAccountId, accountId)).stream().map(Token::getAppName).toList();
         List<String> models = requestAuditLogMapper.selectList(new LambdaQueryWrapper<RequestAuditLog>().eq(RequestAuditLog::getAccountId, accountId)).stream().map(RequestAuditLog::getRequestModel).filter(java.util.Objects::nonNull).distinct().sorted().toList();
         return new UsageView(requests, errors, input, output, total, cache, cacheHitRate(input, cache), apiKeys, models, userQuotaService.quotas(accountId));
+    }
+
+    @GetMapping("/token-activity")
+    public DailyTokenActivityService.Activity tokenActivity(HttpServletRequest request,
+                                                            @RequestParam(required = false) String apiKey,
+                                                            @RequestParam(required = false) String model,
+                                                            @RequestParam(required = false) java.time.LocalDate endDate) {
+        ConsoleSessionService.SessionAccount account = account(request);
+        return dailyTokenActivityService.activity(DailyTokenActivityService.Filter.account(account.id(), apiKey, model), endDate);
     }
 
     private long sum(List<RequestAuditLog> rows, java.util.function.Function<RequestAuditLog, Long> field) { return rows.stream().map(field).filter(java.util.Objects::nonNull).mapToLong(Long::longValue).sum(); }

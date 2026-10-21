@@ -1,6 +1,7 @@
 package com.ainexus.gateway.admin;
 
 import com.ainexus.gateway.mapper.RequestAuditLogMapper;
+import com.ainexus.gateway.service.DailyTokenActivityService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -21,6 +22,7 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class AdminUsageController {
     private final RequestAuditLogMapper auditMapper;
+    private final DailyTokenActivityService dailyTokenActivityService;
 
     @GetMapping
     public UsageResponse usage(@RequestParam(required = false) String user,
@@ -31,6 +33,14 @@ public class AdminUsageController {
         return new UsageResponse(totals(totals), distributions.get(Dimension.providers), distributions.get(Dimension.upstreamAccounts),
                 distributions.get(Dimension.modelGroups), distributions.get(Dimension.models), distributions.get(Dimension.userGroups),
                 distributions.get(Dimension.users));
+    }
+
+    @GetMapping("/token-activity")
+    public DailyTokenActivityService.Activity tokenActivity(@RequestParam(required = false) String user,
+                                                             @RequestParam(required = false) String provider,
+                                                             @RequestParam(required = false) String apiType,
+                                                             @RequestParam(required = false) java.time.LocalDate endDate) {
+        return dailyTokenActivityService.activity(DailyTokenActivityService.Filter.admin(user, provider, apiType), endDate);
     }
 
     @GetMapping("/filters")

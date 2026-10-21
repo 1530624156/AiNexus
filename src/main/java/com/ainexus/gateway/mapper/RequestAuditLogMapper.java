@@ -46,8 +46,23 @@ public interface RequestAuditLogMapper extends BaseMapper<RequestAuditLog> {
             + "UNION ALL SELECT 'apiTypes', api_type FROM request_audit_log WHERE api_type IS NOT NULL AND api_type != '' GROUP BY api_type")
     List<AuditFilterOption> usageFilterOptions();
 
+    @Select("<script>SELECT DATE(create_time) AS day, COALESCE(SUM(total_tokens), 0) AS totalTokens, COUNT(*) AS requests "
+            + "FROM request_audit_log WHERE create_time &gt;= #{start} AND create_time &lt; DATE_ADD(#{end}, INTERVAL 1 DAY) "
+            + "<if test='accountId != null'>AND account_id = #{accountId} </if>"
+            + "<if test='username != null and username != \"\"'>AND user_name = #{username} </if>"
+            + "<if test='appName != null and appName != \"\"'>AND app_name = #{appName} </if>"
+            + "<if test='requestModel != null and requestModel != \"\"'>AND request_model = #{requestModel} </if>"
+            + "<if test='provider != null and provider != \"\"'>AND provider = #{provider} </if>"
+            + "<if test='apiType != null and apiType != \"\"'>AND api_type = #{apiType} </if>"
+            + "GROUP BY DATE(create_time) ORDER BY day</script>")
+    List<DailyTokenActivity> dailyTokenActivity(@Param("accountId") Long accountId, @Param("username") String username,
+                                                 @Param("appName") String appName, @Param("requestModel") String requestModel,
+                                                 @Param("provider") String provider, @Param("apiType") String apiType,
+                                                 @Param("start") java.time.LocalDate start, @Param("end") java.time.LocalDate end);
+
     record AuditOverviewSummary(long requests, long totalTokens, long activeUsers) { }
     record AuditUsageTotals(long requests, long inputTokens, long outputTokens, long totalTokens, long cacheTokens) { }
     record AuditUsageDistribution(String dimension, String name, long requests, long inputTokens, long totalTokens, long cacheTokens) { }
     record AuditFilterOption(String dimension, String name) { }
+    record DailyTokenActivity(java.time.LocalDate day, long totalTokens, long requests) { }
 }
