@@ -16,12 +16,13 @@ import { ArrowRight, Collection, Connection, DataAnalysis, DocumentCopy, Key, Mo
 import { adminApi, authApi, clearStoredSession, portalApi, readStoredSession, saveStoredSession, SESSION_EXPIRED_EVENT, type Account, type AdminUsage, type ApiKey, type AuditLog, type Channel, type GatewaySettings, type GithubBinding, type GithubStarCheckResult, type GithubStarSettings, type LoginOptions, type ModelGroup, type NamedOption, type Overview, type Session, type TokenActivity, type Usage, type UsageFilters, type UsageRanking, type UserGroup } from './api'
 
 type AdminPage = 'overview' | 'channels' | 'model-groups' | 'users' | 'user-groups' | 'usage' | 'ranking' | 'logs' | 'gateway' | 'system'
-type UserPage = 'marketplace' | 'keys' | 'usage' | 'ranking' | 'settings'
+type UserPage = 'marketplace' | 'keys' | 'usage' | 'ranking' | 'sponsor' | 'settings'
 const session = ref<Session | null>(null)
 const booting = ref(true)
 const workspace = ref<'admin' | 'user'>('user')
 const adminPage = ref<AdminPage>('overview')
 const userPage = ref<UserPage>('marketplace')
+const sponsorQrReady = ref(false)
 const loading = ref(false)
 const loginOptions = ref<LoginOptions>({ githubLoginOnly: false })
 const loginForm = reactive({ username: '', password: '' })
@@ -108,7 +109,7 @@ const selectedDiscoveredModels = ref<string[]>([])
 
 const title = computed(() => workspace.value === 'admin'
   ? ({ overview: '概览', channels: '账号池', 'model-groups': '模型组', users: '用户', 'user-groups': '用户组', usage: '用量统计', ranking: '使用排行榜', logs: '调用日志', gateway: '网关设置', system: '系统设置' }[adminPage.value])
-  : ({ marketplace: '模型广场', keys: 'API Keys', usage: '用量统计', ranking: '使用排行榜', settings: '账户设置' }[userPage.value]))
+  : ({ marketplace: '模型广场', keys: 'API Keys', usage: '用量统计', ranking: '使用排行榜', sponsor: '赞助支持', settings: '账户设置' }[userPage.value]))
 const isAdmin = computed(() => session.value?.role === 'ADMIN')
 
 function applySession(result: Session) {
@@ -341,7 +342,7 @@ onBeforeUnmount(() => {
   <main v-else :class="['shell', `shell--${workspace}`]">
     <aside class="rail"><div class="brand"><span class="brand-mark">A</span><div><b>AiNexus</b><small>{{ workspace === 'admin' ? 'ADMIN CONTROL' : 'USER PORTAL' }}</small></div></div>
       <nav v-if="workspace === 'admin'" class="nav-list"><button :class="{active:adminPage==='overview'}" @click="goAdmin('overview')"><DataAnalysis />概览</button><button :class="{active:adminPage==='channels'}" @click="goAdmin('channels')"><Connection />账号池</button><button :class="{active:adminPage==='model-groups'}" @click="goAdmin('model-groups')"><Collection />模型组</button><button :class="{active:adminPage==='users'}" @click="goAdmin('users')"><User />用户</button><button :class="{active:adminPage==='user-groups'}" @click="goAdmin('user-groups')"><UserFilled />用户组</button><button :class="{active:adminPage==='usage'}" @click="goAdmin('usage')"><Monitor />用量统计</button><button :class="{active:adminPage==='ranking'}" @click="goAdmin('ranking')"><Trophy />使用排行榜</button><button :class="{active:adminPage==='logs'}" @click="goAdmin('logs')"><Tickets />调用日志</button><button :class="{active:adminPage==='gateway'}" @click="goAdmin('gateway')"><Connection />网关设置</button><button :class="{active:adminPage==='system'}" @click="goAdmin('system')"><Setting />系统设置</button></nav>
-      <nav v-else class="nav-list"><button :class="{active:userPage==='marketplace'}" @click="goUser('marketplace')"><Collection />模型广场</button><button :class="{active:userPage==='keys'}" @click="goUser('keys')"><Key />API Keys</button><button :class="{active:userPage==='usage'}" @click="goUser('usage')"><Monitor />用量统计</button><button :class="{active:userPage==='ranking'}" @click="goUser('ranking')"><Trophy />使用排行榜</button><button :class="{active:userPage==='settings'}" @click="goUser('settings')"><Setting />账户设置</button></nav>
+      <nav v-else class="nav-list"><button :class="{active:userPage==='marketplace'}" @click="goUser('marketplace')"><Collection />模型广场</button><button :class="{active:userPage==='keys'}" @click="goUser('keys')"><Key />API Keys</button><button :class="{active:userPage==='usage'}" @click="goUser('usage')"><Monitor />用量统计</button><button :class="{active:userPage==='ranking'}" @click="goUser('ranking')"><Trophy />使用排行榜</button><button :class="{active:userPage==='sponsor'}" @click="goUser('sponsor')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.6l-1-1a5.5 5.5 0 1 0-7.8 7.8l8.8 8.8 8.8-8.8a5.5 5.5 0 0 0 0-7.8Z"/></svg>赞助支持</button><button :class="{active:userPage==='settings'}" @click="goUser('settings')"><Setting />账户设置</button></nav>
       <div class="rail-footer"><span class="live-dot" aria-hidden="true"></span><span>{{ session.username }} · {{ session.role }}</span><small>在线</small></div></aside>
     <section class="workspace" v-loading="loading"><header class="topbar"><div><p class="eyebrow">{{ workspace === 'admin' ? 'ADMIN CONSOLE' : 'USER WORKSPACE' }}</p><div class="topbar-title"><h1>{{ title }}</h1><span v-if="workspace==='admin' && adminPage==='overview' && overviewUpdatedAt" class="update-stamp">数据更新于 {{ overviewUpdatedAt }}</span></div></div><div class="workspace-actions"><button v-if="isAdmin" type="button" class="top-action top-action-primary" @click="switchWorkspace(workspace==='admin'?'user':'admin')"><span class="top-action-icon"><Connection /></span><span>{{ workspace==='admin'?'切换用户端':'切换管理端' }}</span></button><button type="button" class="top-action top-action-logout" @click="logout"><span class="top-action-icon"><SwitchButton /></span><span>退出登录</span></button></div></header>
 
@@ -451,6 +452,80 @@ onBeforeUnmount(() => {
       <section v-else-if="userPage==='marketplace'" class="user-page user-marketplace"><div class="user-page-head"><div><p class="eyebrow">MODEL CATALOG</p><h2>模型广场</h2><p>选择已授权的模型 ID，用于 OpenAI 兼容接口调用。</p></div><el-button :icon="Refresh" circle plain aria-label="刷新模型目录" @click="loadCurrent"/></div><section class="connection-block"><div><span class="connection-label">OPENAI BASE URL</span><div class="base-url-value"><code>{{userBaseUrl}}</code><el-tooltip content="复制 Base URL" placement="top"><el-button :icon="DocumentCopy" circle plain aria-label="复制 Base URL" @click="copyBaseUrl"/></el-tooltip></div></div><span class="connection-state"><i></i>可用</span></section><section class="catalog-block"><div class="catalog-title"><div><h3>已授权模型</h3><span>{{models.length}} 个模型</span></div><small>点击图标复制模型 ID</small></div><div class="model-grid user-model-grid"><article v-for="model in models" :key="model"><span class="model-symbol"><Collection /></span><div class="model-id-row"><b>{{model}}</b><small>MODEL ID</small></div><el-tooltip content="复制模型 ID" placement="top"><el-button :icon="DocumentCopy" circle plain aria-label="复制模型 ID" @click="copyModelId(model)"/></el-tooltip></article><p v-if="!models.length" class="empty-note">当前没有可用模型。</p></div></section></section>
       <section v-else-if="userPage==='keys'" class="user-page user-keys"><div class="user-page-head"><div><p class="eyebrow">PERSONAL CREDENTIALS</p><h2>API Keys</h2><p>管理连接 AiNexus 网关的个人访问凭据。</p></div><el-button type="primary" :icon="Plus" @click="keyDialog=true">创建 API Key</el-button></div><section class="credential-block"><div class="credential-summary"><span class="summary-icon"><Key /></span><div><b>{{keys.length}}</b><span>个已创建的 API Key</span></div></div><div class="credential-list"><article v-for="row in keys" :key="row.id" class="credential-item"><div class="credential-main"><span class="credential-status" :class="{disabled:row.status!==1}"></span><div><code>{{row.tokenMasked}}</code><p>{{row.remark || '未添加备注'}}</p></div></div><div class="credential-meta"><span class="key-state" :class="{disabled:row.status!==1}">{{row.status===1?'已启用':'已停用'}}</span><span>{{formatDateTime(row.createTime)}}</span><el-button link type="primary" @click="changeKeyStatus(row)">{{row.status===1?'停用':'启用'}}</el-button><el-button link type="danger" @click="removeKey(row)">撤销</el-button></div></article><p v-if="!keys.length" class="empty-note">尚未创建 API Key。</p></div></section></section>
       <section v-else-if="userPage==='ranking'" class="user-page user-ranking"><div class="user-page-head"><div><p class="eyebrow">COMMUNITY USAGE LEADERBOARD</p><h2>使用排行榜</h2><p>按累计总 Token 排序，查看账户在全体用户中的使用位置。</p></div><el-button :icon="Refresh" circle plain aria-label="刷新使用排行榜" @click="loadCurrent"/></div><section class="ranking-spotlight"><div><span>当前参与排名用户</span><strong>{{usageRanking.totalUsers.toLocaleString()}}</strong></div><div><span>全站累计 Token</span><strong>{{usageRanking.totalTokens.toLocaleString()}}</strong></div></section><section class="user-ranking-list"><article v-for="row in usageRanking.rankings" :key="row.username" class="ranking-row" :class="{current:row.username===session?.username}"><span class="rank-badge" :class="`rank-${row.rank}`">{{row.rank}}</span><span class="ranking-avatar">{{row.username.slice(0,1).toUpperCase()}}</span><div class="ranking-name"><b>{{row.username}}</b><small v-if="row.username===session?.username">当前用户</small></div><div class="ranking-value"><b>{{row.totalTokens.toLocaleString()}}</b><span>总 Token · {{row.requests.toLocaleString()}} 次请求</span></div></article><el-empty v-if="!usageRanking.rankings.length" description="暂无可用于排名的调用数据"/></section></section>
+      <section v-else-if="userPage==='sponsor'" class="user-page user-sponsor">
+        <div class="user-page-head">
+          <div>
+            <p class="eyebrow">VOLUNTARY SPONSORSHIP</p>
+            <h2>赞助支持</h2>
+            <p>AiNexus 对所有内部用户免费开放。如果它帮你省下了时间，欢迎自愿赞助维护者——是否赞助、赞助多少，全都由你决定。</p>
+          </div>
+          <a class="sponsor-share" href="/sponsor.html" target="_blank" rel="noopener" title="在新窗口打开独立赞助页" aria-label="在新窗口打开独立赞助页">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3h7v7"/><path d="M21 3 11 13"/><path d="M19 14v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h5"/></svg>
+            <span>独立赞助页</span>
+          </a>
+        </div>
+
+        <div class="sponsor-layout">
+          <section class="sponsor-about">
+            <p class="eyebrow">HOW IT WORKS</p>
+            <h3>这不是一次购买</h3>
+            <ol class="sponsor-principles">
+              <li>
+                <span class="sponsor-index">01</span>
+                <div><b>不设档位</b><p>没有套餐、没有权益对比表；二维码收多少就是多少，不引导、不暗示。</p></div>
+              </li>
+              <li>
+                <span class="sponsor-index">02</span>
+                <div><b>不是订阅</b><p>一次性赞助，随时可以不再赞助，不扣款、不自动续费。</p></div>
+              </li>
+              <li>
+                <span class="sponsor-index">03</span>
+                <div><b>纯公益</b><p>不解锁任何功能，也不改变你的额度、并发与权限。</p></div>
+              </li>
+            </ol>
+            <div class="sponsor-usage">
+              <p class="sponsor-usage-label">SPONSORSHIP COVERS</p>
+              <ul>
+                <li><b>服务器与带宽</b><span>网关常驻实例与出网流量</span></li>
+                <li><b>模型额度</b><span>共享池的 Token 消耗</span></li>
+                <li><b>域名与证书</b><span>接入地址与 HTTPS 续期</span></li>
+              </ul>
+            </div>
+            <div class="sponsor-pledge">
+              <p class="sponsor-pledge-title">不赞助也完全没问题</p>
+              <p>网关的功能、额度与优先级都不由这个页面决定；赞助只是让服务器与模型额度能多撑一段时间。页面不读取支付信息，也不记录赞助金额与身份。</p>
+            </div>
+          </section>
+
+          <section class="sponsor-pay">
+            <header class="sponsor-pay-head">
+              <p class="eyebrow">WECHAT PAY · SCAN TO SPONSOR</p>
+              <h3>微信扫码赞助</h3>
+              <p>打开微信「扫一扫」，想支持多少就扫多少。</p>
+            </header>
+            <div class="sponsor-qr" :class="{ 'is-ready': sponsorQrReady }">
+              <div class="sponsor-qr-head">
+                <span class="sponsor-wechat"><i></i>微信收款</span>
+                <span class="sponsor-qr-hint">ONCE · NO SUBSCRIPTION</span>
+              </div>
+              <div class="sponsor-qr-stage">
+                <img src="/sponsor-qr.png" alt="微信收款二维码，扫码自愿赞助" width="360" height="360" @load="sponsorQrReady = true" @error="sponsorQrReady = false" />
+                <div v-if="!sponsorQrReady" class="sponsor-qr-empty">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.4"/><rect x="14" y="3" width="7" height="7" rx="1.4"/><rect x="3" y="14" width="7" height="7" rx="1.4"/><path d="M14 14h3v3h-3z"/><path d="M20 14v.01M20 20v.01M14 20v.01M17 17v3"/></svg>
+                  <div><b>收款码待放置</b><span>维护者上传微信收款码后<br>即可扫码赞助</span></div>
+                </div>
+              </div>
+              <p class="sponsor-amount">金额随意 · <b>由你决定</b></p>
+            </div>
+            <ul class="sponsor-meta">
+              <li><b>一次性</b><span>非订阅制</span></li>
+              <li><b>任意金额</b><span>不设档位</span></li>
+              <li><b>纯公益</b><span>仅用于运维</span></li>
+            </ul>
+            <p class="sponsor-footnote">赞助完全自愿 · 不影响任何功能与额度</p>
+          </section>
+        </div>
+      </section>
       <section v-else-if="userPage==='settings'" class="user-page user-settings"><div class="user-page-head"><div><p class="eyebrow">ACCOUNT SECURITY</p><h2>账户设置</h2><p>更新账户密码后，需要使用新密码重新登录。</p></div></div><section class="user-password-block"><div class="user-password-intro"><span class="summary-icon"><Setting /></span><div><h3>修改登录密码</h3><p>新密码长度必须为 8 至 128 个字符。</p></div></div><el-form label-position="top" @submit.prevent="changeUserPassword"><el-form-item label="当前密码"><el-input v-model="userPasswordForm.currentPassword" type="password" show-password autocomplete="current-password"/></el-form-item><el-form-item label="新密码"><el-input v-model="userPasswordForm.newPassword" type="password" show-password autocomplete="new-password"/></el-form-item><el-form-item label="确认新密码"><el-input v-model="userPasswordForm.confirmPassword" type="password" show-password autocomplete="new-password" @keyup.enter="changeUserPassword"/></el-form-item><el-button type="primary" @click="changeUserPassword">更新密码</el-button></el-form></section><section class="user-password-block github-binding-block"><div class="user-password-intro"><span class="summary-icon"><Collection /></span><div><h3>GitHub 账号绑定</h3><p v-if="githubBinding.enabled">绑定后需为 <a :href="githubRepositoryUrl(githubBinding.repository)" target="_blank" rel="noopener noreferrer">{{githubRepositoryUrl(githubBinding.repository)}}</a> 点击 Star 才能使用 API Key 调用模型。</p><p v-else>管理员当前未启用 GitHub Star 准入。</p></div></div><div class="github-binding-state"><template v-if="githubBinding.bound"><div><span class="binding-label">已绑定 GitHub</span><b>@{{githubBinding.githubLogin}}</b><small v-if="githubBinding.starVerifiedAt">最近校验：{{formatDateTime(githubBinding.starVerifiedAt)}}</small><small v-if="githubBinding.refreshable">GitHub 授权支持自动续期</small><small v-else>当前为旧授权；OAuth App 开启可续期授权后，重新绑定即可升级。</small></div><el-button plain type="danger" @click="unbindGithub">解绑</el-button></template><template v-else><div><span class="binding-label">未绑定 GitHub</span><small>完成授权后将自动校验 Star 状态。</small></div><el-button type="primary" :disabled="!githubBinding.enabled" @click="authorizeGithub">绑定 GitHub</el-button></template></div></section></section>
       <section v-else class="user-page user-usage"><div class="user-page-head"><div><p class="eyebrow">PERSONAL API CONSUMPTION</p><h2>用量统计</h2><p>按凭据和模型查看当前账户的调用消耗与可用额度。</p></div><el-button :icon="Refresh" circle plain aria-label="刷新用量" @click="loadCurrent"/></div><section class="usage-filter-block"><span>筛选范围</span><el-select v-model="userUsageFilter.apiKey" clearable filterable placeholder="全部 API Key" @change="loadCurrent"><el-option v-for="item in usage.apiKeys" :key="item" :label="item" :value="item"/></el-select><el-select v-model="userUsageFilter.model" clearable filterable placeholder="全部模型" @change="loadCurrent"><el-option v-for="item in usage.models" :key="item" :label="item" :value="item"/></el-select><el-button plain @click="Object.assign(userUsageFilter,{apiKey:'',model:''});loadCurrent()">重置</el-button></section><div class="usage-stat-grid"><article><span>请求量</span><strong>{{usage.requests.toLocaleString()}}</strong></article><article class="tone-brown"><span>异常调用</span><strong>{{usage.errors.toLocaleString()}}</strong></article><article><span>输入 Token</span><strong>{{usage.inputTokens.toLocaleString()}}</strong></article><article><span>输出 Token</span><strong>{{usage.outputTokens.toLocaleString()}}</strong></article><article class="tone-green"><span>总 Token</span><strong>{{usage.totalTokens.toLocaleString()}}</strong></article><article><span>缓存 Token</span><strong>{{usage.cacheTokens.toLocaleString()}}</strong><small>命中率 {{usage.cacheHitRate.toFixed(2)}}%</small></article></div><section class="token-activity user-token-activity"><div class="token-activity-head"><div><p class="eyebrow">DAILY TOKEN ACTIVITY</p><h3>每日 Token 活跃度</h3></div><div class="activity-summary"><b>{{userTokenActivity.activeDays}}</b><span>活跃日 · {{userTokenActivity.totalTokens.toLocaleString()}} Token</span></div></div><div class="activity-scroll"><div class="activity-grid"><div v-for="(week, weekIndex) in activityWeeks(userTokenActivity)" :key="weekIndex" class="activity-week"><el-tooltip v-for="day in week" :key="day.date" :content="activityTooltip(day)" placement="top"><span class="activity-cell" :class="`level-${activityLevel(day.totalTokens, userTokenActivity)}`" :aria-label="activityTooltip(day)"></span></el-tooltip></div></div></div><div class="activity-legend"><span>少</span><i class="level-0"></i><i class="level-1"></i><i class="level-2"></i><i class="level-3"></i><i class="level-4"></i><span>多</span></div></section><section class="quota-panel user-quota-panel"><div class="quota-heading"><div><p class="eyebrow">CURRENT PERIOD QUOTA</p><h3>剩余配额</h3></div><span>按用户组周期结算</span></div><div class="quota-list"><article v-for="row in usage.quotas" :key="row.userGroup"><div class="quota-group-name"><b>{{row.userGroup}}</b><span>{{row.period}}</span></div><div class="quota-dimensions"><div class="quota-dimension"><div class="quota-dimension-head"><span>个人配额</span><b>{{row.personalRemaining === null || row.personalRemaining === undefined ? '不限制' : `${row.personalRemaining.toLocaleString()} 剩余`}}</b></div><div class="quota-bar"><i :style="{width: row.personalQuota ? `${Math.min(100, row.personalUsed / row.personalQuota * 100)}%` : '0%'}"></i></div><small>{{row.personalQuota ? `${row.personalUsed.toLocaleString()} / ${row.personalQuota.toLocaleString()} Token` : '未设置个人额度'}}</small></div><div class="quota-dimension"><div class="quota-dimension-head"><span>组共享配额</span><b>{{row.groupRemaining === null || row.groupRemaining === undefined ? '不限制' : `${row.groupRemaining.toLocaleString()} 剩余`}}</b></div><div class="quota-bar"><i :style="{width: row.groupQuota ? `${Math.min(100, row.groupUsed / row.groupQuota * 100)}%` : '0%'}"></i></div><small>{{row.groupQuota ? `${row.groupUsed.toLocaleString()} / ${row.groupQuota.toLocaleString()} Token` : '未设置组额度'}}</small></div></div></article><p v-if="!usage.quotas.length" class="empty-note">当前未分配用户组配额。</p></div></section></section>
     </section>

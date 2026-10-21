@@ -8,6 +8,7 @@ import './admin-pages.css'
 import './overview-dashboard.css'
 import './ranking-pages.css'
 import './glass-theme.css'
+import './sponsor-page.css'
 import App from './App.vue'
 
 createApp(App).use(ElementPlus).mount('#app')

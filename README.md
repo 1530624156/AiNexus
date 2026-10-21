@@ -215,6 +215,18 @@ cd ui
 pnpm build
 ```
 
+### 赞助页
+
+`ui/public/sponsor.html` 是一个纯静态的自愿赞助页：不输入金额、不建订单、不读登录态，页面上只有一张微信收款二维码。
+
+1. 把微信收款码图片保存为 `ui/public/sponsor-qr.png`（正方形，PNG）；
+2. 开发态访问 `http://127.0.0.1:5173/sponsor.html`；构建后 `dist/sponsor.html` 由 Nginx 直接以 `/sponsor.html` 提供，不经过 Spring Boot；
+3. 未放置图片时页面显示占位提示，不会报错。
+
+用户端侧栏的“赞助支持”是与该页同源视觉的站内页面（`ui/src/App.vue` 中的 `user-sponsor` 段落 + `ui/src/sponsor-page.css`），使用同一张 `ui/public/sponsor-qr.png`，站内路径为 `/sponsor-qr.png`；两个页面都不需要新增后端接口。
+
+口径：一次性自愿赞助，不设档位、不订阅、不解锁任何功能，不收集支付信息与账号身份。
+
 ## 6. 目录结构
 
 ```
