@@ -31,6 +31,7 @@ public class GatewayRuntimeSettingsService {
         row.setId(1L); row.setAccessUrl(next.accessUrl()); row.setProtocolConversionEnabled(next.protocolConversionEnabled() ? 1 : 0);
         row.setMaxConcurrent(next.maxConcurrent()); row.setQueueCapacity(next.queueCapacity());
         row.setNonStreamTimeoutSeconds(next.nonStreamTimeoutSeconds()); row.setStreamIdleTimeoutSeconds(next.streamIdleTimeoutSeconds()); row.setMaxPayloadMb(next.maxPayloadMb());
+        row.setGithubLoginOnly(next.githubLoginOnly() ? 1 : 0);
         mapper.updateById(row);
         current = next;
         return next;
@@ -49,14 +50,14 @@ public class GatewayRuntimeSettingsService {
         int streamIdleTimeout = nonNegative(request.streamIdleTimeoutSeconds(), "streamIdleTimeoutSeconds");
         int payload = positive(request.maxPayloadMb(), "maxPayloadMb");
         if (payload > 1024) throw BizException.badRequest("invalid_max_payload", "maxPayloadMb must be at most 1024");
-        return new Settings(accessUrl, Boolean.TRUE.equals(request.protocolConversionEnabled()), maxConcurrent, queueCapacity, nonStreamTimeout, streamIdleTimeout, payload);
+        return new Settings(accessUrl, Boolean.TRUE.equals(request.protocolConversionEnabled()), maxConcurrent, queueCapacity, nonStreamTimeout, streamIdleTimeout, payload, Boolean.TRUE.equals(request.githubLoginOnly()));
     }
     private int nonNegative(Integer value, String name) { int v = value == null ? 0 : value; if (v < 0) throw BizException.badRequest("invalid_setting", name + " must not be negative"); return v; }
     private int positive(Integer value, String name) { int v = value == null ? 0 : value; if (v <= 0) throw BizException.badRequest("invalid_setting", name + " must be positive"); return v; }
-    private Settings from(GatewayRuntimeSetting row) { return new Settings(row.getAccessUrl(), row.getProtocolConversionEnabled() != null && row.getProtocolConversionEnabled() == 1, row.getMaxConcurrent(), row.getQueueCapacity(), row.getNonStreamTimeoutSeconds(), row.getStreamIdleTimeoutSeconds(), row.getMaxPayloadMb()); }
+    private Settings from(GatewayRuntimeSetting row) { return new Settings(row.getAccessUrl(), row.getProtocolConversionEnabled() != null && row.getProtocolConversionEnabled() == 1, row.getMaxConcurrent(), row.getQueueCapacity(), row.getNonStreamTimeoutSeconds(), row.getStreamIdleTimeoutSeconds(), row.getMaxPayloadMb(), row.getGithubLoginOnly() != null && row.getGithubLoginOnly() == 1); }
 
-    public record Update(String accessUrl, Boolean protocolConversionEnabled, Integer maxConcurrent, Integer queueCapacity, Integer nonStreamTimeoutSeconds, Integer streamIdleTimeoutSeconds, Integer maxPayloadMb) { }
-    public record Settings(String accessUrl, boolean protocolConversionEnabled, int maxConcurrent, int queueCapacity, int nonStreamTimeoutSeconds, int streamIdleTimeoutSeconds, int maxPayloadMb) {
-        static Settings defaults() { return new Settings("http://localhost:8080/v1", true, 0, 0, 180, 0, 16); }
+    public record Update(String accessUrl, Boolean protocolConversionEnabled, Integer maxConcurrent, Integer queueCapacity, Integer nonStreamTimeoutSeconds, Integer streamIdleTimeoutSeconds, Integer maxPayloadMb, Boolean githubLoginOnly) { }
+    public record Settings(String accessUrl, boolean protocolConversionEnabled, int maxConcurrent, int queueCapacity, int nonStreamTimeoutSeconds, int streamIdleTimeoutSeconds, int maxPayloadMb, boolean githubLoginOnly) {
+        static Settings defaults() { return new Settings("http://localhost:8080/v1", true, 0, 0, 180, 0, 16, false); }
     }
 }

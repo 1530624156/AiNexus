@@ -5,6 +5,7 @@ import com.ainexus.gateway.auth.ConsoleAuthInterceptor;
 import com.ainexus.gateway.auth.ConsoleSessionService;
 import com.ainexus.gateway.common.BizException;
 import com.ainexus.gateway.entity.Account;
+import com.ainexus.gateway.service.GatewayRuntimeSettingsService;
 import com.ainexus.gateway.service.GithubStarGateService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
@@ -21,6 +22,12 @@ import org.springframework.web.bind.annotation.RestController;
 public class ConsoleAuthController {
     private final ConsoleAccountService accountService;
     private final ConsoleSessionService sessionService;
+    private final GatewayRuntimeSettingsService settingsService;
+
+    @GetMapping("/login-options")
+    public LoginOptions loginOptions() {
+        return new LoginOptions(settingsService.get().githubLoginOnly());
+    }
     private final GithubStarGateService githubStarGateService;
 
     @PostMapping("/login")
@@ -29,6 +36,9 @@ public class ConsoleAuthController {
         if (account == null || account.getStatus() == null || account.getStatus() != 1
                 || !accountService.matches(request.password(), account.getPasswordHash())) {
             throw BizException.unauthorized("invalid_login", "Invalid username or password");
+        }
+        if ("USER".equals(account.getRole()) && settingsService.get().githubLoginOnly()) {
+            throw BizException.forbidden("github_login_required", "Password login is disabled. Please sign in with GitHub.");
         }
         return new LoginResponse(sessionService.issue(account), account.getUsername(), account.getRole());
     }
@@ -65,5 +75,6 @@ public class ConsoleAuthController {
 
     public record LoginRequest(@NotBlank String username, @NotBlank String password) { }
     public record LoginResponse(String token, String username, String role) { }
+    public record LoginOptions(boolean githubLoginOnly) { }
     public record AccountView(Long id, String username, String role) { }
 }

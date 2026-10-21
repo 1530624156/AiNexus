@@ -49,6 +49,8 @@ api.interceptors.request.use((config) => {
   return config
 })
 
+export type Session = { token: string; username: string; role: 'ADMIN' | 'USER' }
+export type LoginOptions = { githubLoginOnly: boolean }
 let renewingSession: Promise<void> | null = null
 let sessionExpired = false
 
@@ -104,7 +106,7 @@ export type AdminUsage = { totals: UsageTotals; providers: UsageDistribution[]; 
 export type UsageFilters = { users: string[]; providers: string[]; apiTypes: string[] }
 export type UsageRank = { rank: number; username: string; requests: number; totalTokens: number; cacheTokens: number; cacheHitRate: number }
 export type UsageRanking = { rankings: UsageRank[]; totalTokens: number; totalUsers: number }
-export type GatewaySettings = { accessUrl: string; protocolConversionEnabled: boolean; maxConcurrent: number; queueCapacity: number; nonStreamTimeoutSeconds: number; streamIdleTimeoutSeconds: number; maxPayloadMb: number }
+export type GatewaySettings = { accessUrl: string; protocolConversionEnabled: boolean; maxConcurrent: number; queueCapacity: number; nonStreamTimeoutSeconds: number; streamIdleTimeoutSeconds: number; maxPayloadMb: number; githubLoginOnly: boolean }
 export type GithubStarSettings = { enabled: boolean; repository?: string | null; publicBaseUrl?: string | null; oauthClientId?: string | null; oauthClientSecret?: string | null; dailyCheckTime?: string | null }
 export type GithubBinding = { enabled: boolean; repository?: string | null; bound: boolean; githubLogin?: string | null; starVerifiedAt?: string | null; refreshable?: boolean; accessTokenExpiresAt?: string | null; refreshTokenExpiresAt?: string | null }
 export type GithubStarIssue = { username: string; githubLogin?: string | null; reason: string }
@@ -116,6 +118,7 @@ export type UserGroup = { id: number; name: string; maxConcurrent: number; apiKe
 
 export const authApi = {
   login: (body: { username: string; password: string }) => api.post<Session>('/auth/login', body),
+  loginOptions: () => api.get<LoginOptions>('/auth/login-options'),
   githubAuthorize: () => api.get<{ authorizationUrl: string }>('/console/github/login-authorize'),
   me: () => api.get<Omit<Session, 'token'>>('/auth/me'),
 }
