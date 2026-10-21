@@ -103,12 +103,12 @@ public class GithubStarGateService {
         String login = requestLogin(token.accessToken());
         List<AccountGithubBinding> bindings = bindingMapper.selectList(new LambdaQueryWrapper<AccountGithubBinding>()
                 .eq(AccountGithubBinding::getGithubLogin, login));
-        if (bindings.isEmpty()) throw BizException.forbidden("github_account_not_bound", "This GitHub account is not bound to a system account");
-        if (bindings.size() > 1) throw BizException.forbidden("github_account_ambiguous", "This GitHub account has multiple system bindings; contact an administrator");
+        if (bindings.isEmpty()) throw BizException.forbidden("github_account_not_bound", "该 GitHub 账号尚未绑定系统账号");
+        if (bindings.size() > 1) throw BizException.forbidden("github_account_ambiguous", "该 GitHub 账号绑定了多个系统账号，请联系管理员");
         AccountGithubBinding binding = bindings.getFirst();
         Account account = accountMapper.selectById(binding.getAccountId());
         if (account == null || account.getStatus() == null || account.getStatus() != 1) {
-            throw BizException.forbidden("github_account_unavailable", "The system account bound to this GitHub account is unavailable");
+            throw BizException.forbidden("github_account_unavailable", "该 GitHub 账号绑定的系统账号不可用");
         }
         saveCredentials(binding, login, token, false);
         return account;
@@ -127,6 +127,13 @@ public class GithubStarGateService {
         if (resetStarVerification) binding.setStarVerifiedAt(null);
         if (bindingMapper.selectById(binding.getAccountId()) == null) bindingMapper.insert(binding); else bindingMapper.updateById(binding);
     }
+    /** True when the account already owns a GitHub identity binding. */
+    public boolean hasBinding(Long accountId) {
+        if (accountId == null) return false;
+        AccountGithubBinding b = bindingMapper.selectById(accountId);
+        return b != null && StringUtils.hasText(b.getGithubLogin());
+    }
+
     public Binding binding(Long accountId) {
         AccountGithubBinding b = bindingMapper.selectById(accountId);
         return b == null ? new Binding(false, null, null, false, null, null)
@@ -169,7 +176,7 @@ public class GithubStarGateService {
         StarStatus status = checkStar(binding, setting);
         if (status == StarStatus.STARRED) { binding.setStarVerifiedAt(LocalDateTime.now()); bindingMapper.updateById(binding); return; }
         if (status == StarStatus.TOKEN_INVALID) throw BizException.forbidden("github_authorization_invalid", "GitHub 授权无效或已被撤销，请重新绑定 GitHub 账号");
-        if (status == StarStatus.UNAVAILABLE || status == StarStatus.RATE_LIMITED) throw BizException.forbidden("github_star_check_failed", "Unable to verify GitHub Star status");
+        if (status == StarStatus.UNAVAILABLE || status == StarStatus.RATE_LIMITED) throw BizException.forbidden("github_star_check_failed", "暂时无法校验 GitHub Star 状态，请稍后重试");
         throw BizException.forbidden("github_star_required", "创建失败，请先为 " + repositoryUrl + " 点击 Star 后再创建或启用 API Key");
     }
 
@@ -298,10 +305,10 @@ public class GithubStarGateService {
                     .header("Accept", "application/json").header("Content-Type", "application/x-www-form-urlencoded")
                     .POST(HttpRequest.BodyPublishers.ofString(body)).build();
             JsonNode json = objectMapper.readTree(http.send(request, HttpResponse.BodyHandlers.ofString()).body());
-            if (!json.hasNonNull("access_token")) throw BizException.badRequest("github_oauth_failed", "GitHub OAuth authorization failed");
+            if (!json.hasNonNull("access_token")) throw BizException.badRequest("github_oauth_failed", "GitHub 授权失败，请重试");
             return new OAuthToken(json.get("access_token").asText(), text(json, "refresh_token"),
                     expiry(json, "expires_in"), expiry(json, "refresh_token_expires_in"));
-        } catch (BizException e) { throw e; } catch (Exception e) { throw BizException.badRequest("github_oauth_failed", "Unable to complete GitHub authorization"); }
+        } catch (BizException e) { throw e; } catch (Exception e) { throw BizException.badRequest("github_oauth_failed", "无法完成 GitHub 授权，请重试"); }
     }
 
     private LocalDateTime expiry(JsonNode json, String field) {
@@ -310,7 +317,7 @@ public class GithubStarGateService {
     }
 
     private String text(JsonNode json, String field) { return json.hasNonNull(field) ? json.get(field).asText() : null; }
-    private String requestLogin(String token) { try { HttpRequest req = api("/user", token); JsonNode json = objectMapper.readTree(http.send(req, HttpResponse.BodyHandlers.ofString()).body()); if (!json.hasNonNull("login")) throw BizException.badRequest("github_oauth_failed", "Unable to read GitHub account"); return json.get("login").asText(); } catch (BizException e) { throw e; } catch (Exception e) { throw BizException.badRequest("github_oauth_failed", "Unable to read GitHub account"); } }
+    private String requestLogin(String token) { try { HttpRequest req = api("/user", token); JsonNode json = objectMapper.readTree(http.send(req, HttpResponse.BodyHandlers.ofString()).body()); if (!json.hasNonNull("login")) throw BizException.badRequest("github_oauth_failed", "无法读取 GitHub 账号信息"); return json.get("login").asText(); } catch (BizException e) { throw e; } catch (Exception e) { throw BizException.badRequest("github_oauth_failed", "无法读取 GitHub 账号信息"); } }
     private HttpRequest api(String path, String token) { return HttpRequest.newBuilder(URI.create(GITHUB_API + path)).header("Accept", "application/vnd.github+json").header("Authorization", "Bearer " + token).header("X-GitHub-Api-Version", "2022-11-28").GET().build(); }
     private String state(String payload) { try { return Base64.getUrlEncoder().withoutPadding().encodeToString(payload.getBytes(StandardCharsets.UTF_8)) + "." + sign(payload); } catch (Exception e) { throw new IllegalStateException("Unable to create GitHub authorization state", e); } }
     private Long verifyBindingState(String state) {
@@ -333,9 +340,9 @@ public class GithubStarGateService {
             return payload;
         } catch (Exception e) { throw invalidState(); }
     }
-    private BizException invalidState() { return BizException.badRequest("invalid_github_state", "GitHub authorization state is invalid or expired"); }
+    private BizException invalidState() { return BizException.badRequest("invalid_github_state", "GitHub 授权状态无效或已过期，请重新发起登录"); }
     private String sign(String value) throws Exception { Mac m=Mac.getInstance("HmacSHA256");m.init(new SecretKeySpec(properties.getConsole().getSessionSecret().getBytes(StandardCharsets.UTF_8),"HmacSHA256"));return Base64.getUrlEncoder().withoutPadding().encodeToString(m.doFinal(value.getBytes(StandardCharsets.UTF_8))); }
-    private void requireOAuth(Setting s) { if(!StringUtils.hasText(s.clientId())||!StringUtils.hasText(s.clientSecret())||!StringUtils.hasText(s.publicBaseUrl())) throw BizException.badRequest("github_oauth_not_configured","GitHub OAuth is not configured"); }
+    private void requireOAuth(Setting s) { if(!StringUtils.hasText(s.clientId())||!StringUtils.hasText(s.clientSecret())||!StringUtils.hasText(s.publicBaseUrl())) throw BizException.badRequest("github_oauth_not_configured","GitHub 登录尚未配置，请联系管理员"); }
     private String callbackUrl(Setting s) { return s.publicBaseUrl().replaceAll("/+$","")+"/api/console/github/callback"; }
     private String validTime(String value) { try { return java.time.LocalTime.parse(StringUtils.hasText(value) ? value.trim() : "06:00").toString().substring(0, 5); } catch (Exception e) { throw BizException.badRequest("invalid_daily_check_time", "Daily check time must use HH:mm"); } }
     private String cleanRepository(String value) { if(!StringUtils.hasText(value)) return null; String v=value.trim().replaceFirst("^https?://github\\.com/","").replaceAll("/$",""); if(!v.matches("[^/\\s]+/[^/\\s]+")) throw BizException.badRequest("invalid_github_repository","Repository must be owner/repository"); return v; }

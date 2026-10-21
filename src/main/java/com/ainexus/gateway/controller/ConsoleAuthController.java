@@ -35,10 +35,12 @@ public class ConsoleAuthController {
         Account account = accountService.findByUsername(request.username().trim());
         if (account == null || account.getStatus() == null || account.getStatus() != 1
                 || !accountService.matches(request.password(), account.getPasswordHash())) {
-            throw BizException.unauthorized("invalid_login", "Invalid username or password");
+            throw BizException.unauthorized("invalid_login", "用户名或密码错误");
         }
-        if ("USER".equals(account.getRole()) && settingsService.get().githubLoginOnly()) {
-            throw BizException.forbidden("github_login_required", "Password login is disabled. Please sign in with GitHub.");
+        if ("USER".equals(account.getRole()) && settingsService.get().githubLoginOnly()
+                && githubStarGateService.hasBinding(account.getId())) {
+            throw BizException.forbidden("github_login_required",
+                    "该账号已绑定 GitHub，请使用 GitHub 登录");
         }
         return new LoginResponse(sessionService.issue(account), account.getUsername(), account.getRole());
     }
