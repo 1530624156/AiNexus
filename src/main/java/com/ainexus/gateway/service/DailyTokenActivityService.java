@@ -5,6 +5,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 
 /** Produces GitHub-style calendar data from the immutable request audit trail. */
@@ -15,9 +16,14 @@ public class DailyTokenActivityService {
 
     public Activity activity(Filter filter, LocalDate endDate) {
         LocalDate end = endDate == null ? LocalDate.now() : endDate;
-        LocalDate start = end.minusDays(363);
+        return activity(filter, end.minusDays(363), end);
+    }
+
+    public Activity activity(Filter filter, LocalDate startDate, LocalDate endDate) {
+        LocalDate start = startDate == null ? LocalDate.now().minusDays(363) : startDate;
+        LocalDate end = endDate == null ? LocalDate.now() : endDate;
         List<Day> days = auditMapper.dailyTokenActivity(filter.accountId(), filter.username(), filter.appName(),
-                        filter.requestModel(), filter.provider(), filter.apiType(), start, end).stream()
+                        filter.requestModel(), filter.provider(), filter.apiType(), start.atStartOfDay(), end.plusDays(1).atStartOfDay()).stream()
                 .map(row -> new Day(row.day().toString(), row.totalTokens(), row.requests()))
                 .toList();
         long totalTokens = days.stream().mapToLong(Day::totalTokens).sum();
