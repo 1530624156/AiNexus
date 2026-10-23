@@ -29,13 +29,24 @@ public class UserGroupTokenQuotaService {
                 .stream().map(UserGroupMember::getUserGroupId).toList();
         if (groupIds.isEmpty()) return;
         for (UserGroup group : groupMapper.selectBatchIds(groupIds)) {
-            long quota = group.getTokenQuota() == null ? 0 : group.getTokenQuota();
-            if (quota <= 0) continue;
-            long used = usedByGroup(group.getId(), periodStart(group.getQuotaPeriod()));
-            if (used >= quota) {
+            LocalDateTime start = periodStart(group.getQuotaPeriod());
+            long memberQuota = group.getMemberTokenQuota() == null ? 0 : group.getMemberTokenQuota();
+            if (memberQuota > 0 && usedByAccount(accountId, start) >= memberQuota) {
+                throw BizException.tokenQuotaExceeded("User group member token quota exhausted: " + group.getName());
+            }
+
+            long groupQuota = group.getTokenQuota() == null ? 0 : group.getTokenQuota();
+            if (groupQuota > 0 && usedByGroup(group.getId(), start) >= groupQuota) {
                 throw BizException.tokenQuotaExceeded("User group token quota exhausted: " + group.getName());
             }
         }
+    }
+
+    public long usedByAccount(Long accountId, LocalDateTime periodStart) {
+        return auditMapper.selectList(new LambdaQueryWrapper<RequestAuditLog>()
+                        .eq(RequestAuditLog::getAccountId, accountId)
+                        .ge(RequestAuditLog::getCreateTime, periodStart))
+                .stream().map(RequestAuditLog::getTotalTokens).filter(java.util.Objects::nonNull).mapToLong(Long::longValue).sum();
     }
 
     public long usedByGroup(Long groupId, LocalDateTime periodStart) {

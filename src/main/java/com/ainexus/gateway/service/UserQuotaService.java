@@ -1,9 +1,7 @@
 package com.ainexus.gateway.service;
 
-import com.ainexus.gateway.entity.RequestAuditLog;
 import com.ainexus.gateway.entity.UserGroup;
 import com.ainexus.gateway.entity.UserGroupMember;
-import com.ainexus.gateway.mapper.RequestAuditLogMapper;
 import com.ainexus.gateway.mapper.UserGroupMapper;
 import com.ainexus.gateway.mapper.UserGroupMemberMapper;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
@@ -19,7 +17,6 @@ import java.util.List;
 public class UserQuotaService {
     private final UserGroupMemberMapper memberMapper;
     private final UserGroupMapper groupMapper;
-    private final RequestAuditLogMapper auditMapper;
     private final UserGroupTokenQuotaService groupTokenQuotaService;
 
     public List<Quota> quotas(Long accountId) {
@@ -31,8 +28,7 @@ public class UserQuotaService {
 
     private Quota quota(Long accountId, UserGroup group) {
         LocalDateTime start = groupTokenQuotaService.periodStart(group.getQuotaPeriod());
-        long personalUsed = auditMapper.selectList(new LambdaQueryWrapper<RequestAuditLog>().eq(RequestAuditLog::getAccountId, accountId).ge(RequestAuditLog::getCreateTime, start))
-                .stream().map(RequestAuditLog::getTotalTokens).filter(java.util.Objects::nonNull).mapToLong(Long::longValue).sum();
+        long personalUsed = groupTokenQuotaService.usedByAccount(accountId, start);
         long personalQuota = group.getMemberTokenQuota() == null ? 0 : group.getMemberTokenQuota();
         long groupQuota = group.getTokenQuota() == null ? 0 : group.getTokenQuota();
         long groupUsed = groupQuota == 0 ? 0 : groupTokenQuotaService.usedByGroup(group.getId(), start);
