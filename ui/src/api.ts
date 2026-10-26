@@ -92,12 +92,13 @@ api.interceptors.response.use(undefined, async (error: AxiosError) => {
   }
 })
 
-export type Account = { id: number; username: string; remark?: string | null; status: number; createTime?: string }
+export type Quota = { userGroup: string; period: string; personalQuota?: number | null; personalUsed: number; personalRemaining?: number | null; groupQuota?: number | null; groupUsed: number; groupRemaining?: number | null }
+export type Account = { id: number; username: string; remark?: string | null; status: number; quotas: Quota[]; createTime?: string }
 export type ModelBinding = { id?: number; modelName: string; upstreamModelName?: string | null; status?: number; remark?: string | null }
 export type Channel = { id: number; name: string; provider: string; protocol: string; supportedProtocols?: string[]; baseUrl: string; priority: number; weight: number; maxConcurrent: number; failureCount: number; defaultTestModel?: string | null; status: number; remark?: string | null; models: ModelBinding[] }
 export type AuditLog = { id: number; requestId?: string; appName?: string; apiKeyName?: string; userName?: string; userGroupNames?: string; modelGroupNames?: string; requestModel?: string; upstreamModel?: string; targetChannel?: string; provider?: string; upstreamAccount?: string; apiType?: string; stream?: number; upstreamEndpoint?: string; protocolPath?: string; inputTokens?: number; outputTokens?: number; totalTokens?: number; cacheTokens?: number; statusCode: number; upstreamStatusCode?: number; latencyMs: number; firstTokenMs?: number; queueMs?: number; upstreamLatencyMs?: number; errorCode?: string; errorMsg?: string; createTime: string }
 export type ApiKey = { id: number; appName: string; tokenMasked: string; status: number; remark?: string | null; createTime?: string }
-export type Usage = { requests: number; errors: number; inputTokens: number; outputTokens: number; totalTokens: number; cacheTokens: number; cacheHitRate: number; apiKeys: string[]; models: string[]; quotas: { userGroup: string; period: string; personalQuota?: number | null; personalUsed: number; personalRemaining?: number | null; groupQuota?: number | null; groupUsed: number; groupRemaining?: number | null }[] }
+export type Usage = { requests: number; errors: number; inputTokens: number; outputTokens: number; totalTokens: number; cacheTokens: number; cacheHitRate: number; apiKeys: string[]; models: string[]; quotas: Quota[] }
 export type ModelCatalog = { baseUrl: string; models: string[] }
 export type UsageTotals = { requests: number; inputTokens: number; outputTokens: number; totalTokens: number; cacheTokens: number; cacheHitRate: number }
 export type UsageDistribution = { name: string; requests: number; totalTokens: number; cacheTokens: number; cacheHitRate: number }

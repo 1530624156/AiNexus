@@ -3,6 +3,7 @@ package com.ainexus.gateway.admin;
 import com.ainexus.gateway.common.BizException;
 import com.ainexus.gateway.entity.Account;
 import com.ainexus.gateway.mapper.AccountMapper;
+import com.ainexus.gateway.service.UserQuotaService;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import jakarta.validation.Valid;
@@ -29,6 +30,7 @@ import java.util.List;
 public class AdminUserController {
     private final AccountMapper accountMapper;
     private final ConsoleAccountService accountService;
+    private final UserQuotaService userQuotaService;
 
     @GetMapping
     public List<UserView> list() {
@@ -95,11 +97,12 @@ public class AdminUserController {
 
     private UserView view(Account account) {
         return new UserView(account.getId(), account.getUsername(), account.getRemark(), account.getStatus(),
-                account.getCreateTime(), account.getUpdateTime());
+                userQuotaService.quotas(account.getId()), account.getCreateTime(), account.getUpdateTime());
     }
 
     public record UserCreateRequest(@NotBlank String username, @NotBlank String password, @NotBlank String confirmPassword,
                                     String remark, Integer status) { }
     public record UserUpdateRequest(String password, String confirmPassword, String remark, Integer status) { }
-    public record UserView(Long id, String username, String remark, Integer status, Object createTime, Object updateTime) { }
+    public record UserView(Long id, String username, String remark, Integer status,
+                           List<UserQuotaService.Quota> quotas, Object createTime, Object updateTime) { }
 }
