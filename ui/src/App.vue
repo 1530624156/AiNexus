@@ -321,7 +321,7 @@ async function saveUser() {
   } catch (error: any) { ElMessage.error(error?.response?.data?.error?.message ?? '保存失败') }
 }
 async function removeUser(item: Account) { await ElMessageBox.confirm(`删除用户 ${item.username}？`, '确认删除', { type: 'warning' }); await adminApi.deleteUser(item.id); ElMessage.success('用户已删除'); loadCurrent() }
-async function createKey() { try { const r = (await portalApi.createKey({ remark: keyRemark.value || undefined })).data; revealedKey.value = r.token; keyDialog.value = false; keyRevealDialog.value = true; keyRemark.value = ''; await loadCurrent() } catch { ElMessage.error('创建 API Key 失败') } }
+async function createKey() { try { const r = (await portalApi.createKey({ remark: keyRemark.value || undefined })).data; revealedKey.value = r.token; keyDialog.value = false; keyRevealDialog.value = true; keyRemark.value = ''; await loadCurrent() } catch (error: any) { ElMessage.error(error?.response?.data?.error?.message ?? '创建 API Key 失败') } }
 async function removeKey(item: ApiKey) { await ElMessageBox.confirm('撤销该 API Key？', '确认撤销', { type: 'warning' }); await portalApi.deleteKey(item.id); ElMessage.success('API Key 已撤销'); loadCurrent() }
 async function changeKeyStatus(item: ApiKey) { const enabling = item.status !== 1; try { if (enabling) await ElMessageBox.confirm('启用时会校验 GitHub 账号绑定和项目 Star 状态。', '确认启用 API Key', { type: 'warning' }); await portalApi.updateKeyStatus(item.id, enabling ? 1 : 0); ElMessage.success(enabling ? 'API Key 已启用' : 'API Key 已停用'); loadCurrent() } catch (error: any) { if (error !== 'cancel') ElMessage.error(error?.response?.data?.error?.message ?? '更新 API Key 状态失败') } }
 function copyKey() { copyText(revealedKey.value, 'API Key') }
