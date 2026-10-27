@@ -99,7 +99,7 @@ curl http://localhost:8080/v1/models \
 
 ### 接真实厂商
 
-1. 新数据库执行 `src/main/resources/sql/schema.sql`；已有数据库按版本顺序执行 `src/main/resources/sql/migration/` 中尚未执行的脚本。升级 GitHub Star 准入时，必须执行 `V15__github_oauth_refresh_tokens.sql`；升级 Token 用量统计口径时，必须执行 `V16__normalize_audit_token_accounting.sql`。升级 GitHub 登录前，先执行 `SELECT github_login, COUNT(*) FROM account_github_binding GROUP BY github_login HAVING COUNT(*) > 1` 确认不存在重复值，再执行 `V17__github_login_unique_binding.sql`。升级仅允许 GitHub 登录功能时，执行 `V18__github_login_only.sql`。GitHub 登录仅允许已绑定系统账号的 GitHub 身份，登录时会刷新该绑定的 OAuth 凭据。若需要 GitHub OAuth 自动续期，还需在 GitHub OAuth App 的设置中开启 **Expire user authorization tokens**，然后让已绑定用户重新授权一次，以获取 refresh token。
+1. 新数据库执行 `src/main/resources/sql/schema.sql`；已有数据库按版本顺序执行 `src/main/resources/sql/migration/` 中尚未执行的脚本。升级 GitHub Star 准入时，必须执行 `V15__github_oauth_refresh_tokens.sql`；升级 Token 用量统计口径时，必须执行 `V16__normalize_audit_token_accounting.sql`。升级 GitHub 登录前，先执行 `SELECT github_login, COUNT(*) FROM account_github_binding GROUP BY github_login HAVING COUNT(*) > 1` 确认不存在重复值，再执行 `V17__github_login_unique_binding.sql`。升级仅允许 GitHub 登录功能时，执行 `V18__github_login_only.sql`。启用用户组“允许调用时间”限制时，必须执行 `V19__user_group_allow_time.sql`。GitHub 登录仅允许已绑定系统账号的 GitHub 身份，登录时会刷新该绑定的 OAuth 凭据。若需要 GitHub OAuth 自动续期，还需在 GitHub OAuth App 的设置中开启 **Expire user authorization tokens**，然后让已绑定用户重新授权一次，以获取 refresh token。
 2. 一个渠道可绑定多个模型。例如 BigModel 对接智谱并绑定三个 GLM 模型：
    ```sql
    INSERT INTO channel
@@ -191,7 +191,8 @@ try (InputStream in = body.byteStream();
 - 渠道列表不展开模型名，只展示可点击的“已绑定 N 个”标签；点击后在只读弹窗查看对外模型名、上游模型映射和绑定状态。
 - 新增/编辑渠道抽屉提供“获取上游模型”：新渠道调用 `POST /api/admin/channels/discover-models` 使用当前表单配置；已保存渠道在 API Key 留空时调用 `POST /api/admin/channels/{id}/discover-models`，由服务器安全使用已保存密钥。两种方式均只返回模型目录，不会回传真实 Key。
 - 模型组使用 `model_group` 与 `model_group_model` 关联表，包含名称、从当前可路由模型目录选择的一个或多个模型、备注；删除组时同步清理关联模型，不影响渠道或 `/v1` 路由。
-- 用户组使用 `user_group`、`user_group_member`、`user_group_model_group` 三张表，支持普通用户成员选择、授权模型组、组/单 API Key/成员并发限制及组/成员 Token 配额。配额周期只允许 `DAY`、`WEEK`、`MONTH`、`YEAR`，所有配额或并发值 `0` 表示不限制。
+- 用户组使用 `user_group`、`user_group_member`、`user_group_model_group` 三张表，支持普通用户成员选择、授权模型组、组/单 API Key/成员并发限制及组/成员 Token 配额。配额周期只允许 `DAY`、`WEEK`、`MONTH`、`YEAR`，所有配额或并发值 `0` 表示不限制。用户组还可配置“允许调用时间”时间段（`allow_time_start` / `allow_time_end`，`HH:mm`）。
+- 允许调用时间为半小时开放的日时段限制：`start <= now < end` 放行；结束时间不晚于开始时间按跨夜处理（如 `22:00`-`06:00`）；开始与结束相同或两者留空表示全天不限；只有一端填写会被拒绝（`400 invalid_allow_time`）。用户属于多个用户组时按“严格模式”判定：任一组的时间段不覆盖当前时刻即拒绝，未配置时间段的组不约束成员。时段以网关服务器本地时区计算，命中拒绝时返回 `403 user_group_call_time_restricted`，并写入调用日志。管理员控制台和内部服务 Token 不受该限制。
 - 普通用户的模型广场、其 API Key 的 `GET /v1/models` 和 `/v1/chat/completions` 均强制只允许该用户所属用户组授权模型组内的当前可路由模型；多组成员资格按模型并集授权。未归属任何用户组或没有模型组授权的普通用户无模型可用，调用未授权模型会返回 `403 model_not_authorized`。管理员控制台和未归属控制台账号的内部服务 Token 保持全模型访问。
 - 模型发现拒绝回环、私网和链路本地地址，防止管理端被用作 SSRF 探针；本机 Mock 渠道请手工添加模型绑定。
 - 渠道列表的“测试”支持一个或多个已绑定模型，向上游发送非流式短对话；每个模型单独报告可用性、HTTP 状态、耗时和回答/错误摘要。单批最多 20 个模型、最多 4 个并发测试，不进入生产路由、内部 Token 限流、审计日志或熔断计数。

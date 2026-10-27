@@ -12,6 +12,7 @@ import com.ainexus.gateway.service.GatewayConcurrencyService;
 import com.ainexus.gateway.service.GatewayRuntimeSettingsService;
 import com.ainexus.gateway.service.UserGroupConcurrencyService;
 import com.ainexus.gateway.service.GatewayActivityService;
+import com.ainexus.gateway.service.UserGroupCallWindowService;
 import com.ainexus.gateway.service.UserGroupTokenQuotaService;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -49,6 +50,7 @@ public class ChatController {
     private final UserGroupConcurrencyService userGroupConcurrencyService;
     private final GatewayActivityService gatewayActivityService;
     private final UserGroupTokenQuotaService userGroupTokenQuotaService;
+    private final UserGroupCallWindowService userGroupCallWindowService;
 
     /** OpenAI-compatible local model catalog generated from the current routing cache. */
     @GetMapping("/v1/models")
@@ -96,6 +98,7 @@ public class ChatController {
             boolean stream = root.path("stream").asBoolean(false);
             request.setAttribute("ainexus.audit.stream", stream);
 
+            userGroupCallWindowService.check((Long) request.getAttribute("ainexus.auth.accountId"));
             userGroupTokenQuotaService.check((Long) request.getAttribute("ainexus.auth.accountId"));
             List<ChannelRoute> channels = channelService.route(model, cacheAffinityKey(model, root));
             log.info("[relay] model={} stream={} candidates={}", model, stream,

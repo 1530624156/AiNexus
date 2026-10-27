@@ -21,6 +21,10 @@ target/
 logs/
 *.log
 
+### UI ###
+node_modules/
+ui/dist/
+
 ### OS ###
 .DS_Store
 Thumbs.db

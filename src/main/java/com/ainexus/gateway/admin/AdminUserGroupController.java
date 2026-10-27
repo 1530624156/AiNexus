@@ -38,6 +38,7 @@ import java.util.Set;
 @RequestMapping("/api/admin/user-groups")
 @RequiredArgsConstructor
 public class AdminUserGroupController {
+    private static final java.util.regex.Pattern ALLOW_TIME = java.util.regex.Pattern.compile("^([0-9]{1,2}):([0-5][0-9])$");
     private final UserGroupMapper userGroupMapper;
     private final UserGroupMemberMapper memberMapper;
     private final UserGroupModelGroupMapper modelGroupMapper;
@@ -91,6 +92,13 @@ public class AdminUserGroupController {
         group.setQuotaPeriod(period(request.quotaPeriod()));
         group.setMemberTokenQuota(nonNegativeLong(request.memberTokenQuota(), "memberTokenQuota"));
         group.setMemberMaxConcurrent(nonNegative(request.memberMaxConcurrent(), "memberMaxConcurrent"));
+        String allowTimeStart = allowTime(request.allowTimeStart(), "allowTimeStart");
+        String allowTimeEnd = allowTime(request.allowTimeEnd(), "allowTimeEnd");
+        if ((allowTimeStart == null) != (allowTimeEnd == null)) {
+            throw BizException.badRequest("invalid_allow_time", "allowTimeStart and allowTimeEnd must both be set or both be empty");
+        }
+        group.setAllowTimeStart(allowTimeStart);
+        group.setAllowTimeEnd(allowTimeEnd);
         group.setRemark(request.remark());
         return group;
     }
@@ -117,6 +125,15 @@ public class AdminUserGroupController {
     private int nonNegative(Integer value, String field) { int result = value == null ? 0 : value; if (result < 0) throw BizException.badRequest("invalid_quota", field + " must be zero or positive"); return result; }
     private long nonNegativeLong(Long value, String field) { long result = value == null ? 0L : value; if (result < 0) throw BizException.badRequest("invalid_quota", field + " must be zero or positive"); return result; }
     private String period(String value) { String normalized = StringUtils.hasText(value) ? value.trim().toUpperCase(Locale.ROOT) : "MONTH"; if (!Set.of("DAY", "WEEK", "MONTH", "YEAR").contains(normalized)) throw BizException.badRequest("invalid_quota_period", "quotaPeriod must be DAY, WEEK, MONTH or YEAR"); return normalized; }
+    /** Normalizes an allowed-call-window boundary to {@code HH:mm}; a blank value means "no window". */
+    private String allowTime(String value, String field) {
+        if (!StringUtils.hasText(value)) return null;
+        java.util.regex.Matcher matcher = ALLOW_TIME.matcher(value.trim());
+        if (!matcher.matches() || Integer.parseInt(matcher.group(1)) > 23) {
+            throw BizException.badRequest("invalid_allow_time", field + " must be HH:mm between 00:00 and 23:59");
+        }
+        return String.format("%02d:%02d", Integer.parseInt(matcher.group(1)), Integer.parseInt(matcher.group(2)));
+    }
     private UserGroup required(Long id) { UserGroup group = userGroupMapper.selectById(id); if (group == null) throw BizException.badRequest("user_group_not_found", "User group not found: " + id); return group; }
 
     private UserGroupView view(UserGroup group) {
@@ -127,10 +144,10 @@ public class AdminUserGroupController {
         long usedPromptTokens = group.getTokenQuota() == null || group.getTokenQuota() == 0 ? 0L : tokenQuotaService.usedByGroup(group.getId(), tokenQuotaService.periodStart(group.getQuotaPeriod()));
         Long remainingTokenQuota = group.getTokenQuota() == null || group.getTokenQuota() == 0 ? null
                 : Math.max(0L, group.getTokenQuota() - usedPromptTokens);
-        return new UserGroupView(group.getId(), group.getName(), group.getMaxConcurrent(), group.getApiKeyMaxConcurrent(), group.getTokenQuota(), group.getQuotaPeriod(), group.getMemberTokenQuota(), group.getMemberMaxConcurrent(), group.getRemark(), memberIds, memberIds.stream().map(members::get).filter(java.util.Objects::nonNull).toList(), modelGroupIds, modelGroupIds.stream().map(modelGroups::get).filter(java.util.Objects::nonNull).toList(), usedPromptTokens, remainingTokenQuota, group.getCreateTime(), group.getUpdateTime());
+        return new UserGroupView(group.getId(), group.getName(), group.getMaxConcurrent(), group.getApiKeyMaxConcurrent(), group.getTokenQuota(), group.getQuotaPeriod(), group.getMemberTokenQuota(), group.getMemberMaxConcurrent(), group.getAllowTimeStart(), group.getAllowTimeEnd(), group.getRemark(), memberIds, memberIds.stream().map(members::get).filter(java.util.Objects::nonNull).toList(), modelGroupIds, modelGroupIds.stream().map(modelGroups::get).filter(java.util.Objects::nonNull).toList(), usedPromptTokens, remainingTokenQuota, group.getCreateTime(), group.getUpdateTime());
     }
 
-    public record UserGroupRequest(@NotBlank String name, Integer maxConcurrent, Integer apiKeyMaxConcurrent, Long tokenQuota, String quotaPeriod, Long memberTokenQuota, Integer memberMaxConcurrent, String remark, List<Long> memberIds, List<Long> modelGroupIds) { }
-    public record UserGroupView(Long id, String name, Integer maxConcurrent, Integer apiKeyMaxConcurrent, Long tokenQuota, String quotaPeriod, Long memberTokenQuota, Integer memberMaxConcurrent, String remark, List<Long> memberIds, List<String> memberNames, List<Long> modelGroupIds, List<String> modelGroupNames, Long usedPromptTokens, Long remainingTokenQuota, Object createTime, Object updateTime) { }
+    public record UserGroupRequest(@NotBlank String name, Integer maxConcurrent, Integer apiKeyMaxConcurrent, Long tokenQuota, String quotaPeriod, Long memberTokenQuota, Integer memberMaxConcurrent, String allowTimeStart, String allowTimeEnd, String remark, List<Long> memberIds, List<Long> modelGroupIds) { }
+    public record UserGroupView(Long id, String name, Integer maxConcurrent, Integer apiKeyMaxConcurrent, Long tokenQuota, String quotaPeriod, Long memberTokenQuota, Integer memberMaxConcurrent, String allowTimeStart, String allowTimeEnd, String remark, List<Long> memberIds, List<String> memberNames, List<Long> modelGroupIds, List<String> modelGroupNames, Long usedPromptTokens, Long remainingTokenQuota, Object createTime, Object updateTime) { }
     public record OptionView(Long id, String name) { }
 }
