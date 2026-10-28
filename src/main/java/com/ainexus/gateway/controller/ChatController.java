@@ -91,9 +91,7 @@ public class ChatController {
                 throw BizException.badRequest("missing_model", "Field 'model' is required");
             }
             model = modelNode.asText().trim();
-            if (!availableModels(request).contains(model)) {
-                throw BizException.forbidden("model_not_authorized", "Model is not authorized for this API key");
-            }
+            ensureModelUsable(request, model);
             promptTokens = estimatePromptTokens(root);
             boolean stream = root.path("stream").asBoolean(false);
             request.setAttribute("ainexus.audit.stream", stream);
@@ -148,6 +146,39 @@ public class ChatController {
         if (accountId == null) return routeCacheService.getAvailableModels();
         java.util.Set<String> authorized = modelAuthorizationService.authorizedModels(accountId);
         return routeCacheService.getAvailableModels().stream().filter(authorized::contains).toList();
+    }
+
+    /**
+     * 区分三种情况，避免把"模型不存在"误报成"API 密钥无效"：
+     * 1. 模型不在可路由目录 → 404 model_not_found（调用方应提示模型不存在）；
+     * 2. 模型存在但该 Key 所属用户组未授权 → 403 model_not_authorized；
+     * 3. 校验通过 → 进入路由。
+     */
+    private void ensureModelUsable(HttpServletRequest request, String model) {
+        Long accountId = (Long) request.getAttribute("ainexus.auth.accountId");
+        java.util.Set<String> authorized = accountId == null ? null : modelAuthorizationService.authorizedModels(accountId);
+        checkModelUsable(routeCacheService.getAvailableModels(), authorized, model);
+    }
+
+    /** 纯函数版模型可用性判定；{@code authorizedModels == null} 表示内部服务 Token 的全模型访问。 */
+    static void checkModelUsable(List<String> catalog, java.util.Set<String> authorizedModels, String model) {
+        if (!catalog.contains(model)) {
+            throw BizException.modelNotFound(model, caseInsensitiveHint(catalog, model));
+        }
+        if (authorizedModels == null) {
+            return;
+        }
+        if (!authorizedModels.contains(model)) {
+            throw BizException.modelNotAuthorized(model);
+        }
+    }
+
+    /** 模型名区分大小写；仅给出唯一的大小写近似匹配提示，避免调用方反复试错。 */
+    private static String caseInsensitiveHint(List<String> catalog, String model) {
+        List<String> matches = catalog.stream()
+                .filter(candidate -> candidate.equalsIgnoreCase(model))
+                .toList();
+        return matches.size() == 1 ? " Did you mean '" + matches.getFirst() + "'?" : "";
     }
 
     /** 兼容 Windows PowerShell Out-File 等工具产生的 UTF-8 BOM；仅发现 BOM 时复制并剥离前三字节。 */

@@ -31,9 +31,28 @@ public class BizException extends RuntimeException {
         return new BizException(403, "permission_error", code, message);
     }
 
+    /**
+     * 模型不存在/当前不可路由：采用 OpenAI 语义的 404 model_not_found。
+     * 绝不能复用 403 permission_error，否则调用方客户端会把它渲染成"API 密钥无效"。
+     */
+    public static BizException modelNotFound(String model, String hint) {
+        return new BizException(404, "invalid_request_error", "model_not_found",
+                "The model '" + model + "' does not exist or is not currently available on this gateway."
+                        + hint
+                        + " Call GET /v1/models with the same API key to list the models you can use.");
+    }
+
+    /** 模型存在，但当前 API Key 所属用户组未被授权：此时才是真正的权限问题(403)。 */
+    public static BizException modelNotAuthorized(String model) {
+        return new BizException(403, "permission_error", "model_not_authorized",
+                "The API key is valid, but the model '" + model + "' is not authorized for it. "
+                        + "Model access is granted by user group; call GET /v1/models to list the models this API key can use.");
+    }
+
+    /** 模型存在，但当前没有健康的上游渠道(渠道被熔断或全部不可用)。 */
     public static BizException noChannel(String model) {
-        return new BizException(503, "model_not_found", "no_channel",
-                "No available channel for model: " + model);
+        return new BizException(503, "service_unavailable", "no_available_channel",
+                "The model '" + model + "' is registered but no healthy upstream channel is currently available. Please retry later.");
     }
 
     public static BizException rateLimited(String message) {
