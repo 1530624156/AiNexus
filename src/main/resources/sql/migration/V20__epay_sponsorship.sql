@@ -1,24 +1,21 @@
--- V20: Alipay configuration and voluntary sponsorship orders.
+-- V20: Epay configuration and voluntary sponsorship orders.
 USE ainexus;
 
-CREATE TABLE IF NOT EXISTS `alipay_setting` (
+CREATE TABLE IF NOT EXISTS `epay_setting` (
     `id` BIGINT NOT NULL COMMENT 'Singleton row, always 1',
     `enabled` TINYINT NOT NULL DEFAULT 0,
-    `app_id` VARCHAR(64) NULL,
-    `seller_id` VARCHAR(64) NULL COMMENT 'Merchant Alipay user ID/PID',
-    `private_key` TEXT NULL COMMENT 'Merchant RSA private key; server-side only',
-    `alipay_public_key` TEXT NULL COMMENT 'Alipay RSA public key',
-    `gateway_url` VARCHAR(512) NOT NULL DEFAULT 'https://openapi.alipay.com/gateway.do',
+    `gateway_url` VARCHAR(512) NULL COMMENT 'Epay submit endpoint, for example https://pay.example.com/submit.php',
+    `merchant_id` VARCHAR(64) NULL COMMENT 'Epay pid',
+    `merchant_key` VARCHAR(512) NULL COMMENT 'Epay key; server-side only',
     `notify_url` VARCHAR(512) NULL,
     `return_url` VARCHAR(512) NULL,
-    `sign_type` VARCHAR(16) NOT NULL DEFAULT 'RSA2',
-    `charset` VARCHAR(32) NOT NULL DEFAULT 'UTF-8',
-    `format` VARCHAR(16) NOT NULL DEFAULT 'json',
+    `default_payment_type` VARCHAR(32) NOT NULL DEFAULT 'alipay' COMMENT 'alipay, wxpay, qqpay or provider-defined type',
+    `sign_type` VARCHAR(16) NOT NULL DEFAULT 'MD5',
     `update_time` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     PRIMARY KEY (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Alipay sponsorship configuration';
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Epay sponsorship configuration';
 
-INSERT INTO `alipay_setting` (`id`) VALUES (1)
+INSERT INTO `epay_setting` (`id`) VALUES (1)
 ON DUPLICATE KEY UPDATE `id` = `id`;
 
 CREATE TABLE IF NOT EXISTS `sponsorship_order` (
@@ -29,8 +26,9 @@ CREATE TABLE IF NOT EXISTS `sponsorship_order` (
     `amount` DECIMAL(12,2) NOT NULL,
     `currency` VARCHAR(8) NOT NULL DEFAULT 'CNY',
     `subject` VARCHAR(128) NOT NULL,
+    `payment_type` VARCHAR(32) NULL COMMENT 'Epay payment type',
     `status` VARCHAR(24) NOT NULL DEFAULT 'PENDING' COMMENT 'PENDING, PAID, CLOSED',
-    `trade_no` VARCHAR(64) NULL COMMENT 'Alipay trade number',
+    `trade_no` VARCHAR(64) NULL COMMENT 'Epay platform trade number',
     `paid_at` DATETIME NULL,
     `create_time` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     `update_time` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,

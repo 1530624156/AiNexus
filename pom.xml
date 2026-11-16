@@ -95,13 +95,6 @@
             <optional>true</optional>
         </dependency>
 
-        <!-- Alipay official Java SDK: page payment signing and notification verification. -->
-        <dependency>
-            <groupId>com.alipay.sdk</groupId>
-            <artifactId>alipay-sdk-java</artifactId>
-            <version>4.40.0.ALL</version>
-        </dependency>
-
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>

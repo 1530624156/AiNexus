@@ -66,6 +66,10 @@ set PATH=%JAVA_HOME%\bin;%PATH%
 mvn -DskipTests spring-boot:run
 ```
 
+### 支付模块数据库升级
+
+赞助支付已改为易支付协议。全新数据库执行 [V20__epay_sponsorship.sql](src/main/resources/sql/migration/V20__epay_sponsorship.sql)；若此前已经执行过旧版支付宝的 `V20__alipay_sponsorship.sql`，必须改为执行 [V21__migrate_alipay_sponsorship_to_epay.sql](src/main/resources/sql/migration/V21__migrate_alipay_sponsorship_to_epay.sql)。该升级会保留历史已支付订单，并关闭旧版仍待支付的支付宝订单，防止已下线的回调被错误入账。
+
 ### 模型目录
 
 网关提供本地 OpenAI 兼容模型目录，不会查询上游厂商，数据来自当前预热的路由缓存：

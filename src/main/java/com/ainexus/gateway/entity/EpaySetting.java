@@ -7,19 +7,16 @@ import lombok.Data;
 import java.time.LocalDateTime;
 
 @Data
-@TableName("alipay_setting")
-public class AlipaySetting {
+@TableName("epay_setting")
+public class EpaySetting {
     @TableId private Long id;
     private Integer enabled;
-    private String appId;
-    private String sellerId;
-    private String privateKey;
-    private String alipayPublicKey;
     private String gatewayUrl;
+    private String merchantId;
+    private String merchantKey;
     private String notifyUrl;
     private String returnUrl;
+    private String defaultPaymentType;
     private String signType;
-    private String charset;
-    private String format;
     private LocalDateTime updateTime;
 }

@@ -2,7 +2,7 @@ package com.ainexus.gateway.controller;
 
 import com.ainexus.gateway.auth.ConsoleAuthInterceptor;
 import com.ainexus.gateway.auth.ConsoleSessionService;
-import com.ainexus.gateway.service.AlipaySponsorshipService;
+import com.ainexus.gateway.service.EpaySponsorshipService;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.MediaType;
@@ -19,28 +19,23 @@ import java.util.Map;
 @RestController
 @RequestMapping("/api")
 @RequiredArgsConstructor
-public class AlipaySponsorshipController {
-    private final AlipaySponsorshipService service;
+public class EpaySponsorshipController {
+    private final EpaySponsorshipService service;
 
     @PostMapping("/console/sponsorship-orders")
-    public AlipaySponsorshipService.PaymentPage create(HttpServletRequest request, @RequestBody CreateRequest body) {
+    public EpaySponsorshipService.PaymentPage create(HttpServletRequest request, @RequestBody CreateRequest body) {
         ConsoleSessionService.SessionAccount account = account(request);
-        return service.createPayment(account.id(), account.username(), body.amount());
+        return service.createPayment(account.id(), account.username(), body.amount(), body.paymentType());
     }
 
     @GetMapping("/console/sponsorship-orders/status")
-    public AlipaySponsorshipService.OrderView status(HttpServletRequest request, @RequestParam String outTradeNo) {
+    public EpaySponsorshipService.OrderView status(HttpServletRequest request, @RequestParam String outTradeNo) {
         return service.orderForAccount(account(request).id(), outTradeNo);
     }
 
-    @PostMapping(value = "/payments/alipay/notify", produces = MediaType.TEXT_PLAIN_VALUE)
-    public String notify(@RequestParam Map<String, String> params) {
-        return service.handleNotification(params) ? "success" : "failure";
-    }
+    @PostMapping(value = "/payments/epay/notify", produces = MediaType.TEXT_PLAIN_VALUE)
+    public String notify(@RequestParam Map<String, String> params) { return service.handleNotification(params) ? "success" : "fail"; }
 
-    private ConsoleSessionService.SessionAccount account(HttpServletRequest request) {
-        return (ConsoleSessionService.SessionAccount) request.getAttribute(ConsoleAuthInterceptor.ATTRIBUTE);
-    }
-
-    public record CreateRequest(BigDecimal amount) { }
+    private ConsoleSessionService.SessionAccount account(HttpServletRequest request) { return (ConsoleSessionService.SessionAccount) request.getAttribute(ConsoleAuthInterceptor.ATTRIBUTE); }
+    public record CreateRequest(BigDecimal amount, String paymentType) { }
 }

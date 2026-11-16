@@ -18,6 +18,7 @@ public class SponsorshipOrder {
     private BigDecimal amount;
     private String currency;
     private String subject;
+    private String paymentType;
     private String status;
     private String tradeNo;
     private LocalDateTime paidAt;
