@@ -98,6 +98,14 @@
 
 .sponsor-pay { padding: 22px; }
 .sponsor-pay-head p:not(.eyebrow) { margin: 8px 0 0; color: var(--glass-muted); font-size: 12px; line-height: 1.7; }
+.sponsor-payment-form { margin-top: 18px; }
+.sponsor-payment-form .el-form-item { margin-bottom: 14px; }
+.sponsor-payment-form .el-button { width: 100%; }
+.sponsor-order-state { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 9px; margin-top: 12px; padding: 10px; border: 1px solid var(--glass-line); border-radius: 7px; color: #62627b; font-size: 11px; }
+.sponsor-order-state code { overflow: hidden; color: #4a4969; text-overflow: ellipsis; white-space: nowrap; }
+.sponsor-order-state b { color: #247253; font-size: 11px; }
+.sponsor-divider { display: flex; align-items: center; gap: 10px; margin: 20px 0 2px; color: #8a899e; font-size: 11px; }
+.sponsor-divider::before, .sponsor-divider::after { flex: 1; height: 1px; background: var(--glass-line); content: ''; }
 
 .sponsor-qr {
   margin-top: 16px;

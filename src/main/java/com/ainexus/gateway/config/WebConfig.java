@@ -54,5 +54,9 @@ public class WebConfig implements WebMvcConfigurer {
                 .allowedOrigins(allowedOrigins)
                 .allowedMethods("GET", "POST", "PATCH", "DELETE", "OPTIONS")
                 .allowedHeaders("*");
+        registry.addMapping("/api/payments/**")
+                .allowedOrigins(allowedOrigins)
+                .allowedMethods("POST", "OPTIONS")
+                .allowedHeaders("*");
     }
 }
