@@ -49,7 +49,8 @@ public class UserPortalController {
         ConsoleSessionService.SessionAccount account = account(request);
         List<String> models = "ADMIN".equals(account.role()) ? routeCacheService.getAvailableModels() : routeCacheService.getAvailableModels().stream()
                 .filter(modelAuthorizationService.authorizedModels(account.id())::contains).toList();
-        return new ModelCatalog(settingsService.get().accessUrl(), models);
+        GatewayRuntimeSettingsService.Settings settings = settingsService.get();
+        return new ModelCatalog(settings.accessUrl(), settings.accessUrls(), models);
     }
 
     @GetMapping("/api-keys")
@@ -115,7 +116,7 @@ public class UserPortalController {
     private ConsoleSessionService.SessionAccount account(HttpServletRequest request) { return (ConsoleSessionService.SessionAccount) request.getAttribute(ConsoleAuthInterceptor.ATTRIBUTE); }
     private String mask(String value) { return value.length() < 10 ? "********" : value.substring(0, 7) + "****" + value.substring(value.length() - 4); }
     private String randomKey() { byte[] bytes = new byte[24]; new SecureRandom().nextBytes(bytes); return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes); }
-    public record ModelCatalog(String baseUrl, List<String> models) { }
+    public record ModelCatalog(String baseUrl, List<GatewayRuntimeSettingsService.AccessUrl> accessUrls, List<String> models) { }
     public record ApiKeyView(Long id, String appName, String tokenMasked, Integer status, String remark, Object createTime) { }
     public record ApiKeyCreated(Long id, String token, String remark) { }
     public record KeyStatusRequest(Integer status) { }

@@ -12,6 +12,7 @@ public class GatewayRuntimeSetting {
     @TableId
     private Long id;
     private String accessUrl;
+    private String accessUrls;
     private Integer protocolConversionEnabled;
     private Integer maxConcurrent;
     private Integer queueCapacity;
