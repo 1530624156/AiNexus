@@ -33,6 +33,9 @@ public class EpaySponsorshipController {
         return service.orderForAccount(account(request).id(), outTradeNo);
     }
 
+    @GetMapping("/console/sponsorship-ranking")
+    public java.util.List<EpaySponsorshipService.RankingView> ranking() { return service.ranking(); }
+
     @PostMapping(value = "/payments/epay/notify", produces = MediaType.TEXT_PLAIN_VALUE)
     public String notify(@RequestParam Map<String, String> params) { return service.handleNotification(params) ? "success" : "fail"; }
 

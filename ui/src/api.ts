@@ -119,6 +119,7 @@ export type NamedOption = { id: number; name: string }
 export type UserGroup = { id: number; name: string; maxConcurrent: number; apiKeyMaxConcurrent: number; tokenQuota: number; quotaPeriod: 'DAY' | 'WEEK' | 'MONTH' | 'YEAR'; memberTokenQuota: number; memberMaxConcurrent: number; allowTimeStart?: string | null; allowTimeEnd?: string | null; remark?: string | null; memberIds: number[]; memberNames: string[]; modelGroupIds: number[]; modelGroupNames: string[]; usedPromptTokens: number; remainingTokenQuota?: number | null; createTime?: string; updateTime?: string }
 export type EpaySettings = { enabled: boolean; gatewayUrl?: string | null; merchantId?: string | null; merchantKey?: string | null; notifyUrl?: string | null; returnUrl?: string | null; defaultPaymentType?: string | null; signType?: string | null }
 export type SponsorshipOrder = { outTradeNo: string; sponsorName: string; amount: number; currency: string; paymentType?: string | null; status: 'PENDING' | 'PAID' | 'CLOSED'; tradeNo?: string | null; paidAt?: string | null; createTime?: string | null }
+export type SponsorshipRank = { sponsorName: string; amount: number }
 
 export const authApi = {
   login: (body: { username: string; password: string }) => api.post<Session>('/auth/login', body),
@@ -183,4 +184,5 @@ export const portalApi = {
   unbindGithub: () => api.delete('/console/github/binding'),
   createSponsorshipOrder: (body: { amount: number; paymentType?: string }) => api.post<{ outTradeNo: string; paymentUrl: string }>('/console/sponsorship-orders', body),
   sponsorshipOrderStatus: (outTradeNo: string) => api.get<SponsorshipOrder>('/console/sponsorship-orders/status', { params: { outTradeNo } }),
+  sponsorshipRanking: () => api.get<SponsorshipRank[]>('/console/sponsorship-ranking'),
 }

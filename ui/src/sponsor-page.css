@@ -83,8 +83,23 @@
 .sponsor-usage b { color: #343352; font-weight: 600; }
 .sponsor-usage span { flex: none; color: #6f7190; font-size: 11px; }
 
+.sponsor-ranking { margin: 22px 0 0; padding-top: 18px; border-top: 1px dashed var(--glass-line); }
+.sponsor-ranking-head { display: flex; align-items: end; justify-content: space-between; gap: 12px; }
+.sponsor-ranking-head h4 { margin: 5px 0 0; color: #343352; font-size: 14px; }
+.sponsor-ranking-head > span { color: #828098; font-size: 10.5px; }
+.sponsor-ranking-list { display: grid; gap: 2px; max-height: 232px; margin: 13px 0 0; padding: 0; overflow-y: auto; list-style: none; }
+.sponsor-ranking-list li { display: grid; grid-template-columns: 25px minmax(0, 1fr) auto; align-items: center; gap: 8px; min-height: 29px; padding: 4px 2px; border-bottom: 1px solid rgba(104, 92, 166, 0.08); }
+.sponsor-ranking-list li:last-child { border-bottom: 0; }
+.sponsor-rank { display: grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; color: #77748f; background: rgba(112, 95, 180, 0.09); font: 600 10px 'DM Mono', monospace; }
+.sponsor-rank.rank-1 { color: #8a5c00; background: #f9e6a9; }
+.sponsor-rank.rank-2 { color: #586578; background: #e1e8ef; }
+.sponsor-rank.rank-3 { color: #8a5c48; background: #f1d9c8; }
+.sponsor-ranking-list b { overflow: hidden; color: #484660; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.sponsor-ranking-list strong { color: #34715b; font: 700 11px 'DM Mono', monospace; white-space: nowrap; }
+.sponsor-ranking-empty { margin: 14px 0 0; color: #85839a; font-size: 11px; }
+
 .sponsor-pledge {
-  margin: auto 0 0;
+  margin: 22px 0 0;
   padding: 14px 16px;
   border: 1px solid rgba(104, 92, 166, 0.14);
   border-radius: 11px;

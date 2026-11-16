@@ -103,6 +103,13 @@ public class EpaySponsorshipService {
         return toOrderView(order);
     }
     public List<OrderView> adminOrders() { return orderMapper.selectList(new LambdaQueryWrapper<SponsorshipOrder>().orderByDesc(SponsorshipOrder::getId)).stream().map(this::toOrderView).toList(); }
+    public List<RankingView> ranking() {
+        Map<String, BigDecimal> totals = new java.util.HashMap<>();
+        orderMapper.selectList(new LambdaQueryWrapper<SponsorshipOrder>().eq(SponsorshipOrder::getStatus, "PAID")).forEach(order ->
+                totals.merge(order.getSponsorName(), order.getAmount(), BigDecimal::add));
+        return totals.entrySet().stream().sorted(Map.Entry.<String, BigDecimal>comparingByValue().reversed().thenComparing(Map.Entry.comparingByKey()))
+                .limit(20).map(entry -> new RankingView(entry.getKey(), entry.getValue())).toList();
+    }
 
     private EpaySetting setting() { EpaySetting value = settingMapper.selectById(1L); return value == null ? new EpaySetting() : value; }
     private void ensureReady(EpaySetting setting) { if (!isReady(setting)) throw BizException.badRequest("epay_not_configured", "Epay sponsorship is not configured or enabled"); }
@@ -123,5 +130,6 @@ public class EpaySponsorshipService {
     public record UpdateSetting(Boolean enabled, String gatewayUrl, String merchantId, String merchantKey, String notifyUrl, String returnUrl, String defaultPaymentType) { }
     public record AdminSettingView(boolean enabled, String gatewayUrl, String merchantId, String merchantKey, String notifyUrl, String returnUrl, String defaultPaymentType, String signType) { }
     public record PaymentPage(String outTradeNo, String paymentUrl) { }
+    public record RankingView(String sponsorName, BigDecimal amount) { }
     public record OrderView(String outTradeNo, String sponsorName, BigDecimal amount, String currency, String paymentType, String status, String tradeNo, LocalDateTime paidAt, LocalDateTime createTime) { }
 }

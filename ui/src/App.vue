@@ -13,7 +13,7 @@ import 'element-plus/es/components/message-box/style/css'
 // 避免把整个 echarts（约 1MB）打进产物
 echarts.use([LineChart, GridComponent, LegendComponent, TooltipComponent, CanvasRenderer])
 import { ArrowRight, Collection, Connection, DataAnalysis, DocumentCopy, Key, Monitor, Plus, Refresh, Setting, SwitchButton, Tickets, Trophy, User, UserFilled } from '@element-plus/icons-vue'
-import { adminApi, authApi, clearStoredSession, portalApi, readStoredSession, saveStoredSession, SESSION_EXPIRED_EVENT, type Account, type AdminUsage, type EpaySettings, type ApiKey, type AuditLog, type Channel, type GatewaySettings, type GithubBinding, type GithubStarCheckResult, type GithubStarSettings, type LoginOptions, type ModelGroup, type NamedOption, type Overview, type Session, type SponsorshipOrder, type TokenActivity, type Usage, type UsageFilters, type UsageRanking, type UserGroup } from './api'
+import { adminApi, authApi, clearStoredSession, portalApi, readStoredSession, saveStoredSession, SESSION_EXPIRED_EVENT, type Account, type AdminUsage, type EpaySettings, type ApiKey, type AuditLog, type Channel, type GatewaySettings, type GithubBinding, type GithubStarCheckResult, type GithubStarSettings, type LoginOptions, type ModelGroup, type NamedOption, type Overview, type Session, type SponsorshipOrder, type SponsorshipRank, type TokenActivity, type Usage, type UsageFilters, type UsageRanking, type UserGroup } from './api'
 
 type AdminPage = 'overview' | 'channels' | 'model-groups' | 'users' | 'user-groups' | 'usage' | 'ranking' | 'logs' | 'gateway' | 'system' | 'sponsorships'
 type UserPage = 'marketplace' | 'keys' | 'usage' | 'ranking' | 'sponsor' | 'settings'
@@ -27,6 +27,7 @@ const sponsorshipAmount = ref<number>(20)
 const sponsorshipCreating = ref(false)
 const sponsorshipOrder = ref<SponsorshipOrder | null>(null)
 const sponsorshipOrders = ref<SponsorshipOrder[]>([])
+const sponsorshipRanking = ref<SponsorshipRank[]>([])
 const epaySettings = reactive<EpaySettings>({ enabled: false, gatewayUrl: '', merchantId: '', merchantKey: '', notifyUrl: '', returnUrl: '', defaultPaymentType: 'alipay', signType: 'MD5' })
 const sponsorshipPaymentType = ref('alipay')
 const loading = ref(false)
@@ -249,6 +250,7 @@ async function loadCurrent() {
       if (userPage.value === 'keys') keys.value = (await portalApi.keys()).data
       if (userPage.value === 'usage') { const [report, activity] = await Promise.all([portalApi.usage(userUsageFilter), portalApi.tokenActivity({ apiKey: userUsageFilter.apiKey || undefined, model: userUsageFilter.model || undefined })]); usage.value = report.data; userTokenActivity.value = activity.data }
       if (userPage.value === 'ranking') usageRanking.value = (await portalApi.usageRanking()).data
+      if (userPage.value === 'sponsor') sponsorshipRanking.value = (await portalApi.sponsorshipRanking()).data
       if (userPage.value === 'settings') githubBinding.value = (await portalApi.githubStatus()).data
     }
   } catch (error: any) {
@@ -509,9 +511,10 @@ onBeforeUnmount(() => {
                 <li><b>域名与证书</b><span>接入地址与 HTTPS 续期</span></li>
               </ul>
             </div>
+            <section class="sponsor-ranking"><div class="sponsor-ranking-head"><div><p class="sponsor-usage-label">SPONSOR LEADERBOARD</p><h4>赞助排行榜</h4></div><span>累计已支付</span></div><ol v-if="sponsorshipRanking.length" class="sponsor-ranking-list"><li v-for="(entry,index) in sponsorshipRanking" :key="entry.sponsorName"><span class="sponsor-rank" :class="`rank-${index+1}`">{{index+1}}</span><b>{{entry.sponsorName}}</b><strong>¥ {{Number(entry.amount).toFixed(2)}}</strong></li></ol><p v-else class="sponsor-ranking-empty">尚无已支付的赞助记录。</p></section>
             <div class="sponsor-pledge">
               <p class="sponsor-pledge-title">不赞助也完全没问题</p>
-              <p>网关的功能、额度与优先级都不由这个页面决定；赞助只是让服务器与模型额度能多撑一段时间。页面不读取支付信息，也不记录赞助金额与身份。</p>
+              <p>网关的功能、额度与优先级都不由这个页面决定；赞助只是让服务器与模型额度能多撑一段时间。</p>
             </div>
           </section>
 
