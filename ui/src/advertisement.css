@@ -1,0 +1,264 @@
+/* Commercial advertisement slots: glass cards for the login aside, the user workspace header and the user rail. */
+
+.ad-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  padding: 2px 6px;
+  border: 1px solid rgba(112, 69, 234, 0.18);
+  border-radius: 6px;
+  background: rgba(112, 69, 234, 0.09);
+  color: #6a45d4;
+  font: 700 9px/1.5 'DM Mono', monospace;
+  letter-spacing: 0.9px;
+  white-space: nowrap;
+}
+
+.ad-corner {
+  position: absolute;
+  top: -7px;
+  right: 12px;
+  padding: 1px 6px;
+  border: 1px solid rgba(112, 69, 234, 0.16);
+  border-radius: 99px;
+  background: rgba(255, 255, 255, 0.94);
+  color: #7d6ba8;
+  font: 600 8px/1.6 'DM Mono', monospace;
+  letter-spacing: 0.8px;
+}
+
+.ad-copy { display: grid; gap: 2px; min-width: 0; }
+.ad-copy b {
+  overflow: hidden;
+  color: var(--glass-ink);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.35;
+  letter-spacing: 0;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ad-copy small {
+  overflow: hidden;
+  color: #666a86;
+  font-size: 11px;
+  line-height: 1.5;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ad-cta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  height: 32px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #8a5cf6, #5c2bd7);
+  box-shadow: 0 8px 18px rgba(92, 43, 215, 0.24);
+  color: #fff !important;
+  font: 600 12px/1 'Inter', sans-serif;
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: transform 0.16s ease, box-shadow 0.16s ease, filter 0.16s ease;
+}
+.ad-cta:hover { transform: translateY(-1px); box-shadow: 0 11px 22px rgba(92, 43, 215, 0.3); filter: brightness(1.03); }
+.ad-cta:focus-visible { outline: 3px solid rgba(109, 61, 237, 0.3); outline-offset: 2px; }
+.ad-cta.is-static { opacity: 0.72; box-shadow: none; cursor: default; }
+.ad-cta-sm { height: 29px; padding: 0 12px; font-size: 11px; }
+
+.ad-logo {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 38px;
+  height: 38px;
+  overflow: hidden;
+  border-radius: 11px;
+  background: linear-gradient(135deg, rgba(138, 92, 246, 0.18), rgba(92, 43, 215, 0.12));
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.7);
+  color: #6a45d4;
+  font: 700 15px 'Inter', sans-serif;
+}
+.ad-logo img { width: 100%; height: 100%; object-fit: cover; }
+.ad-logo-sm { width: 30px; height: 30px; border-radius: 9px; font-size: 12px; }
+
+/* Login page: below the feature list, above the version stamp. */
+.login-ad {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 13px;
+  width: 100%;
+  max-width: 520px;
+  margin-top: 22px;
+  padding: 14px 16px;
+  border: 1px solid var(--glass-border);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.52);
+  box-shadow: 0 16px 38px rgba(69, 70, 130, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.8);
+  backdrop-filter: blur(18px) saturate(140%);
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
+}
+
+/* User workspace header: horizontal card in the free space right of the page title. */
+.hero-ad {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  max-width: 420px;
+  margin: 0 14px 0 auto;
+  padding: 9px 12px;
+  border: 1px solid var(--glass-border);
+  border-radius: 15px;
+  background: rgba(255, 255, 255, 0.5);
+  box-shadow: 0 14px 32px rgba(69, 70, 130, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.78);
+  backdrop-filter: blur(16px) saturate(140%);
+  -webkit-backdrop-filter: blur(16px) saturate(140%);
+}
+
+/* User rail: tucked above the current-user footer and pinned to the bottom of the sidebar. */
+.rail-bottom { display: grid; gap: 12px; margin-top: auto; }
+.rail-bottom .rail-footer { margin-top: 0; padding-top: 14px; }
+.rail-ad {
+  display: grid;
+  gap: 9px;
+  padding: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.72);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.46);
+  box-shadow: 0 12px 28px rgba(69, 70, 130, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.75);
+  backdrop-filter: blur(16px) saturate(140%);
+  -webkit-backdrop-filter: blur(16px) saturate(140%);
+}
+.rail-ad-head { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.rail-ad-icon {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  background: rgba(112, 69, 234, 0.1);
+  color: #7045ea;
+}
+.rail-ad-icon svg { width: 15px; height: 15px; }
+.rail-ad-logo {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 26px;
+  height: 26px;
+  overflow: hidden;
+  border-radius: 8px;
+  background: rgba(112, 69, 234, 0.12);
+  color: #6a45d4;
+  font: 700 12px 'Inter', sans-serif;
+}
+.rail-ad-logo img { width: 100%; height: 100%; object-fit: cover; }
+.rail-ad-title {
+  min-width: 0;
+  overflow: hidden;
+  color: #2b2d4a;
+  font-size: 12px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rail-ad .ad-chip { margin-left: auto; }
+.rail-ad-line {
+  display: -webkit-box;
+  overflow: hidden;
+  margin: 0;
+  color: #71748f;
+  font-size: 10px;
+  line-height: 1.55;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+.rail-ad-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  justify-self: start;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #7045ea;
+  font: 600 10px 'Inter', sans-serif;
+  cursor: pointer;
+}
+.rail-ad-link svg { width: 12px; height: 12px; }
+.rail-ad-link:hover { color: #5c2bd7; }
+.rail-ad-link:focus-visible { outline: 3px solid rgba(109, 61, 237, 0.28); outline-offset: 2px; border-radius: 4px; }
+.rail-ad-cta {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  height: 29px;
+  border: 1px solid rgba(112, 69, 234, 0.16);
+  border-radius: 9px;
+  background: rgba(112, 69, 234, 0.1);
+  color: #6a45d4 !important;
+  font: 600 10px 'Inter', sans-serif;
+  text-decoration: none;
+  transition: background 0.16s ease;
+}
+.rail-ad-cta:hover { background: rgba(112, 69, 234, 0.17); }
+.rail-ad-cta.is-static { opacity: 0.7; }
+
+/* Contact dialog shared by every leasing card. */
+.ad-contact { display: grid; justify-items: center; gap: 10px; padding: 6px 0 2px; text-align: center; }
+.ad-contact-label { color: #8588a0; font: 600 10px 'DM Mono', monospace; letter-spacing: 1px; }
+.ad-contact-value {
+  max-width: 100%;
+  padding: 9px 14px;
+  overflow-wrap: anywhere;
+  border: 1px solid rgba(104, 92, 166, 0.14);
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.62);
+  color: #33345a;
+  font: 600 14px 'DM Mono', monospace;
+}
+.ad-contact-qr { width: 190px; height: 190px; padding: 8px; border: 1px solid rgba(104, 92, 166, 0.14); border-radius: 14px; background: #fff; object-fit: contain; }
+.ad-contact small { color: #8588a0; font-size: 11px; line-height: 1.6; }
+
+/* Administrator editor inside 系统设置 (the surrounding section stays a solid white settings card). */
+.ad-settings > div:first-child p { margin: 6px 0 18px; color: #6f7690; font-size: 12px; line-height: 1.7; }
+.ad-contact-fields { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.ad-contact-fields .el-input { max-width: 460px; }
+.ad-qr-preview { width: 44px; height: 44px; border: 1px solid rgba(104, 92, 166, 0.16); border-radius: 8px; background: #fff; object-fit: cover; }
+.ad-slot-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(255px, 1fr)); gap: 14px; margin: 6px 0 18px; }
+.ad-slot-editor {
+  display: grid;
+  align-content: start;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid rgba(104, 92, 166, 0.13);
+  border-radius: 12px;
+  background: rgba(112, 69, 234, 0.035);
+}
+.ad-slot-editor > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.ad-slot-editor > header b { display: block; color: var(--glass-ink); font-size: 12px; }
+.ad-slot-editor > header small { display: block; margin-top: 3px; color: #8588a0; font-size: 10px; line-height: 1.5; }
+.ad-slot-editor .el-form-item { margin-bottom: 0; }
+.ad-slot-editor .el-form-item__label { padding-bottom: 4px; color: #61647f; font-size: 11px; }
+.ad-slot-hint { margin: 0; color: #8588a0; font-size: 10px; line-height: 1.6; }
+
+@media (max-width: 1180px) {
+  .hero-ad { display: none; }
+}
+
+@media (max-width: 900px) {
+  .login-ad, .rail-ad { display: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ad-cta, .rail-ad-cta { transition: none; }
+}

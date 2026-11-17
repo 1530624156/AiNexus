@@ -9,6 +9,7 @@ import './overview-dashboard.css'
 import './ranking-pages.css'
 import './feedback-pages.css'
 import './glass-theme.css'
+import './advertisement.css'
 import './sponsor-page.css'
 import App from './App.vue'
 

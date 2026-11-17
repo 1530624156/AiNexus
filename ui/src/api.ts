@@ -125,6 +125,12 @@ export type FeedbackCategory = 'SUGGESTION' | 'BUG' | 'PERFORMANCE' | 'OTHER'
 export type FeedbackStatus = 'PENDING' | 'REPLIED'
 export type Feedback = { id: number; accountId: number; username: string; category: FeedbackCategory; content: string; contact?: string | null; status: FeedbackStatus; replyContent?: string | null; repliedBy?: string | null; repliedAt?: string | null; createTime?: string; updateTime?: string }
 export type FeedbackSubmit = { category: FeedbackCategory; content: string; contact?: string }
+export type AdSlotKey = 'LOGIN_ASIDE' | 'USER_HERO' | 'USER_SIDEBAR'
+export type AdStatus = 'LEASING' | 'ACTIVE' | 'CLOSED'
+export type AdContactType = 'WECHAT' | 'QQ' | 'EMAIL' | 'QR' | 'LINK'
+export type AdContact = { type: AdContactType; value?: string | null }
+export type AdSlot = { slotKey: AdSlotKey; status: AdStatus; logoUrl?: string | null; title?: string | null; subtitle?: string | null; buttonText?: string | null; linkUrl?: string | null }
+export type AdsConfig = { contact: AdContact; slots: AdSlot[] }
 
 export const authApi = {
   login: (body: { username: string; password: string }) => api.post<Session>('/auth/login', body),
@@ -175,6 +181,8 @@ export const adminApi = {
   sponsorshipOrders: () => api.get<SponsorshipOrder[]>('/admin/epay/sponsorship-orders'),
   feedback: (params?: { status?: FeedbackStatus }) => api.get<Feedback[]>('/admin/feedback', { params }),
   replyFeedback: (id: number, body: { reply: string }) => api.put<Feedback>(`/admin/feedback/${id}/reply`, body),
+  ads: () => api.get<AdsConfig>('/admin/ads'),
+  updateAds: (body: AdsConfig) => api.put<AdsConfig>('/admin/ads', body),
 }
 export const portalApi = {
   models: () => api.get<ModelCatalog>('/console/models'),
@@ -194,4 +202,8 @@ export const portalApi = {
   sponsorshipRanking: () => api.get<SponsorshipRank[]>('/console/sponsorship-ranking'),
   feedback: () => api.get<Feedback[]>('/console/feedback'),
   submitFeedback: (body: FeedbackSubmit) => api.post<Feedback>('/console/feedback', body),
+}
+/** Unauthenticated endpoints used before a console session exists (login page). */
+export const publicApi = {
+  ads: () => api.get<AdsConfig>('/public/ads'),
 }
