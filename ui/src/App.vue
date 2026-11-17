@@ -286,6 +286,8 @@ async function loadCurrent() {
       if (adminPage.value === 'sponsorships') sponsorshipOrders.value = (await adminApi.sponsorshipOrders()).data
       if (adminPage.value === 'logs') { const r = (await adminApi.logs({ page: 1, size: 50 })).data; logs.value = r.records; logTotal.value = r.total }
     } else {
+      // 首次加载失败或缓存为空时，进入用户端重新拉取，保证广告位不会一直缺失。
+      if (!ads.value.slots.length) loadAds()
       if (userPage.value === 'marketplace') { const catalog = (await portalApi.models()).data; models.value = catalog.models; userBaseUrls.value = catalog.accessUrls?.length ? catalog.accessUrls : [{ name: '默认', url: catalog.baseUrl }] }
       if (userPage.value === 'keys') keys.value = (await portalApi.keys()).data
       if (userPage.value === 'usage') { const [report, activity] = await Promise.all([portalApi.usage(userUsageFilter), portalApi.tokenActivity({ apiKey: userUsageFilter.apiKey || undefined, model: userUsageFilter.model || undefined })]); usage.value = report.data; userTokenActivity.value = activity.data }
@@ -439,7 +441,10 @@ function applyAdsConfig(config: AdsConfig) {
   })
 }
 async function loadAds() {
-  try { applyAds((await publicApi.ads()).data) } catch { /* 广告接口不可用时保持静默，不影响登录与业务页面 */ }
+  try { applyAds((await publicApi.ads()).data) } catch {
+    // 部署/后端重启瞬间的失败不应让广告位在整个会话里一直空白，静默重试一次。
+    window.setTimeout(() => { publicApi.ads().then(({ data }) => applyAds(data)).catch(() => {}) }, 3000)
+  }
 }
 async function saveAds() {
   try {

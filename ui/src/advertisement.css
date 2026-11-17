@@ -109,8 +109,10 @@
 .hero-ad {
   position: relative;
   display: flex;
+  flex: 0 1 380px;
   align-items: center;
   gap: 11px;
+  min-width: 0;
   max-width: 420px;
   margin: 0 14px 0 auto;
   padding: 9px 12px;
@@ -123,7 +125,9 @@
 }
 
 /* User rail: tucked above the current-user footer and pinned to the bottom of the sidebar. */
-.rail-bottom { display: grid; gap: 12px; margin-top: auto; }
+/* A short viewport must not push the bottom card below the fold: the nav shrinks and scrolls instead. */
+.rail .nav-list { flex: 0 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
+.rail-bottom { display: grid; flex: none; gap: 12px; margin-top: auto; }
 .rail-bottom .rail-footer { margin-top: 0; padding-top: 14px; }
 .rail-ad {
   display: grid;
@@ -251,12 +255,45 @@
 .ad-slot-editor .el-form-item__label { padding-bottom: 4px; color: #61647f; font-size: 11px; }
 .ad-slot-hint { margin: 0; color: #8588a0; font-size: 10px; line-height: 1.6; }
 
-@media (max-width: 1180px) {
-  .hero-ad { display: none; }
+/* Keep the header ad alive as the window narrows: shrink it instead of removing it, so the
+   用户端顶部广告位 never silently disappears on laptop / non-maximised windows. */
+@media (max-width: 1320px) {
+  .hero-ad { flex-basis: 330px; }
+  .hero-ad .ad-copy small { display: none; }
 }
 
+@media (max-width: 1080px) {
+  .hero-ad { flex-basis: 250px; gap: 8px; margin-right: 10px; padding: 7px 9px; }
+  .hero-ad .ad-logo { display: none; }
+  .hero-ad .ad-copy b { font-size: 12px; }
+  .hero-ad .ad-cta { height: 27px; padding: 0 10px; font-size: 11px; }
+}
+
+/* The rail keeps its card until it collapses into the 64px icon rail at 900px. */
 @media (max-width: 900px) {
-  .login-ad, .rail-ad { display: none; }
+  .login-ad { display: none; }
+}
+
+/* Collapsed rail: shrink the card to a compact glass tile instead of dropping it, so the
+   sidebar slot still renders on narrow windows. */
+@media (max-width: 900px) {
+  .rail-bottom { grid-template-columns: minmax(0, 1fr); width: 100%; min-width: 0; }
+  .rail-ad { width: 100%; min-width: 0; justify-items: center; gap: 6px; padding: 6px 4px; }
+  .rail-ad-title, .rail-ad-line, .rail-ad .ad-chip { display: none; }
+  .rail-ad-head { justify-content: center; }
+  .rail-ad-icon, .rail-ad-logo { width: 24px; height: 24px; }
+  .rail-ad-link { justify-self: center; font-size: 0; }
+  .rail-ad-link svg { display: none; }
+  .rail-ad-link::after { content: '广告'; font-size: 8px; font-weight: 700; letter-spacing: 0.5px; }
+  .rail-ad-cta { width: 100%; height: 24px; font-size: 0; }
+  .rail-ad-cta span { font-size: 13px; }
+  .rail-bottom .rail-footer { min-width: 0; overflow: hidden; }
+  .rail-bottom .rail-footer span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .rail-bottom .rail-footer small { display: none; }
+}
+
+@media (max-width: 640px) {
+  .hero-ad { display: none; }
 }
 
 @media (prefers-reduced-motion: reduce) {
