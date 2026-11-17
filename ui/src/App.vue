@@ -12,11 +12,11 @@ import 'element-plus/es/components/message-box/style/css'
 // 按需注册用到的 ECharts 模块（line 图 + grid/tooltip/legend + canvas 渲染器），
 // 避免把整个 echarts（约 1MB）打进产物
 echarts.use([LineChart, GridComponent, LegendComponent, TooltipComponent, CanvasRenderer])
-import { ArrowRight, Close, Collection, Connection, DataAnalysis, DocumentCopy, Key, Monitor, Plus, Refresh, Setting, SwitchButton, Tickets, Trophy, User, UserFilled } from '@element-plus/icons-vue'
-import { adminApi, authApi, clearStoredSession, portalApi, readStoredSession, saveStoredSession, SESSION_EXPIRED_EVENT, type Account, type AdminUsage, type EpaySettings, type ApiKey, type AuditLog, type Channel, type GatewaySettings, type GithubBinding, type GithubStarCheckResult, type GithubStarSettings, type LoginOptions, type ModelGroup, type NamedOption, type Overview, type Session, type SponsorshipOrder, type SponsorshipRank, type TokenActivity, type Usage, type UsageFilters, type UsageRanking, type UserGroup } from './api'
+import { ArrowRight, ChatDotRound, Close, Collection, Connection, DataAnalysis, DocumentCopy, Key, Monitor, Plus, Refresh, Setting, SwitchButton, Tickets, Trophy, User, UserFilled } from '@element-plus/icons-vue'
+import { adminApi, authApi, clearStoredSession, portalApi, readStoredSession, saveStoredSession, SESSION_EXPIRED_EVENT, type Account, type AdminUsage, type EpaySettings, type ApiKey, type AuditLog, type Channel, type Feedback, type FeedbackCategory, type GatewaySettings, type GithubBinding, type GithubStarCheckResult, type GithubStarSettings, type LoginOptions, type ModelGroup, type NamedOption, type Overview, type Session, type SponsorshipOrder, type SponsorshipRank, type TokenActivity, type Usage, type UsageFilters, type UsageRanking, type UserGroup } from './api'
 
-type AdminPage = 'overview' | 'channels' | 'model-groups' | 'users' | 'user-groups' | 'usage' | 'ranking' | 'logs' | 'gateway' | 'system' | 'sponsorships'
-type UserPage = 'marketplace' | 'keys' | 'usage' | 'ranking' | 'sponsor' | 'settings'
+type AdminPage = 'overview' | 'channels' | 'model-groups' | 'users' | 'user-groups' | 'feedback' | 'usage' | 'ranking' | 'logs' | 'gateway' | 'system' | 'sponsorships'
+type UserPage = 'marketplace' | 'keys' | 'usage' | 'ranking' | 'sponsor' | 'feedback' | 'settings'
 type OpenAiBaseUrl = { name: string; url: string }
 const session = ref<Session | null>(null)
 const booting = ref(true)
@@ -58,6 +58,7 @@ function asModelGroup(row: unknown): ModelGroup { return row as ModelGroup }
 function asUserGroup(row: unknown): UserGroup { return row as UserGroup }
 function asAccount(row: unknown): Account { return row as Account }
 function asAuditLog(row: unknown): AuditLog { return row as AuditLog }
+function asFeedback(row: unknown): Feedback { return row as Feedback }
 const channels = ref<Channel[]>([])
 const users = ref<Account[]>([])
 const modelGroups = ref<ModelGroup[]>([])
@@ -87,6 +88,15 @@ const emptyTokenActivity = (): TokenActivity => ({ startDate: '', endDate: '', t
 const userTokenActivity = ref<TokenActivity>(emptyTokenActivity())
 const adminTokenActivity = ref<TokenActivity>(emptyTokenActivity())
 const usageRanking = ref<UsageRanking>({ rankings: [], totalTokens: 0, totalUsers: 0 })
+const feedbacks = ref<Feedback[]>([])
+const feedbackForm = reactive({ category: 'SUGGESTION' as FeedbackCategory, content: '', contact: '' })
+const feedbackSubmitting = ref(false)
+const feedbackStatusFilter = ref<'ALL' | 'PENDING' | 'REPLIED'>('ALL')
+const feedbackReplyDrawer = ref(false)
+const replyingFeedback = ref<Feedback | null>(null)
+const feedbackReplyContent = ref('')
+const feedbackReplySaving = ref(false)
+const feedbackPendingCount = computed(() => feedbacks.value.filter(item => item.status === 'PENDING').length)
 const gatewaySettings = reactive<GatewaySettings>({ accessUrl: 'http://localhost:8080/v1', accessUrls: [{ name: '默认', url: 'http://localhost:8080/v1' }], protocolConversionEnabled: true, maxConcurrent: 0, queueCapacity: 0, nonStreamTimeoutSeconds: 180, streamIdleTimeoutSeconds: 0, maxPayloadMb: 16, githubLoginOnly: false })
 const adminPasswordForm = reactive({ currentPassword: '', newPassword: '', confirmPassword: '' })
 const userPasswordForm = reactive({ currentPassword: '', newPassword: '', confirmPassword: '' })
@@ -116,8 +126,8 @@ const discoveredModels = ref<{ id: string; ownedBy?: string }[]>([])
 const selectedDiscoveredModels = ref<string[]>([])
 
 const title = computed(() => workspace.value === 'admin'
-  ? ({ overview: '概览', channels: '账号池', 'model-groups': '模型组', users: '用户', 'user-groups': '用户组', usage: '用量统计', ranking: '使用排行榜', logs: '调用日志', gateway: '网关设置', system: '系统设置', sponsorships: '赞助记录' }[adminPage.value])
-  : ({ marketplace: '模型广场', keys: 'API Keys', usage: '用量统计', ranking: '使用排行榜', sponsor: '赞助支持', settings: '账户设置' }[userPage.value]))
+  ? ({ overview: '概览', channels: '账号池', 'model-groups': '模型组', users: '用户', 'user-groups': '用户组', feedback: '用户反馈', usage: '用量统计', ranking: '使用排行榜', logs: '调用日志', gateway: '网关设置', system: '系统设置', sponsorships: '赞助记录' }[adminPage.value])
+  : ({ marketplace: '模型广场', keys: 'API Keys', usage: '用量统计', ranking: '使用排行榜', sponsor: '赞助支持', feedback: '意见反馈', settings: '账户设置' }[userPage.value]))
 const isAdmin = computed(() => session.value?.role === 'ADMIN')
 
 function applySession(result: Session) {
@@ -249,6 +259,7 @@ async function loadCurrent() {
       if (adminPage.value === 'model-groups') { const [groups, available] = await Promise.all([adminApi.modelGroups(), adminApi.availableGroupModels()]); modelGroups.value = groups.data; availableGroupModels.value = available.data }
       if (adminPage.value === 'user-groups') { const [groups, members, modelGroups] = await Promise.all([adminApi.userGroups(), adminApi.availableGroupMembers(), adminApi.availableAuthorizedModelGroups()]); userGroups.value = groups.data; availableGroupMembers.value = members.data; availableAuthorizedModelGroups.value = modelGroups.data }
       if (adminPage.value === 'users') users.value = (await adminApi.users()).data
+      if (adminPage.value === 'feedback') feedbacks.value = (await adminApi.feedback(feedbackStatusFilter.value === 'ALL' ? undefined : { status: feedbackStatusFilter.value })).data
       if (adminPage.value === 'usage') { const params = { user: usageFilterForm.user || undefined, provider: usageFilterForm.provider || undefined, apiType: usageFilterForm.apiType || undefined, range: usageFilterForm.range, startDate: usageFilterForm.range === 'custom' ? usageFilterForm.dateRange[0] : undefined, endDate: usageFilterForm.range === 'custom' ? usageFilterForm.dateRange[1] : undefined }; const [report, filters, activity] = await Promise.all([adminApi.usage(params), adminApi.usageFilters(), adminApi.tokenActivity(params)]); adminUsage.value = report.data; usageFilters.value = filters.data; adminTokenActivity.value = activity.data }
       if (adminPage.value === 'ranking') usageRanking.value = (await adminApi.usageRanking()).data
       if (adminPage.value === 'gateway') Object.assign(gatewaySettings, (await adminApi.gatewaySettings()).data)
@@ -261,6 +272,7 @@ async function loadCurrent() {
       if (userPage.value === 'usage') { const [report, activity] = await Promise.all([portalApi.usage(userUsageFilter), portalApi.tokenActivity({ apiKey: userUsageFilter.apiKey || undefined, model: userUsageFilter.model || undefined })]); usage.value = report.data; userTokenActivity.value = activity.data }
       if (userPage.value === 'ranking') usageRanking.value = (await portalApi.usageRanking()).data
       if (userPage.value === 'sponsor') sponsorshipRanking.value = (await portalApi.sponsorshipRanking()).data
+      if (userPage.value === 'feedback') feedbacks.value = (await portalApi.feedback()).data
       if (userPage.value === 'settings') githubBinding.value = (await portalApi.githubStatus()).data
     }
   } catch (error: any) {
@@ -346,6 +358,41 @@ async function createKey() { try { const r = (await portalApi.createKey({ remark
 async function removeKey(item: ApiKey) { await ElMessageBox.confirm('撤销该 API Key？', '确认撤销', { type: 'warning' }); await portalApi.deleteKey(item.id); ElMessage.success('API Key 已撤销'); loadCurrent() }
 async function changeKeyStatus(item: ApiKey) { const enabling = item.status !== 1; try { if (enabling) await ElMessageBox.confirm('启用时会校验 GitHub 账号绑定和项目 Star 状态。', '确认启用 API Key', { type: 'warning' }); await portalApi.updateKeyStatus(item.id, enabling ? 1 : 0); ElMessage.success(enabling ? 'API Key 已启用' : 'API Key 已停用'); loadCurrent() } catch (error: any) { if (error !== 'cancel') ElMessage.error(error?.response?.data?.error?.message ?? '更新 API Key 状态失败') } }
 function copyKey() { copyText(revealedKey.value, 'API Key') }
+function changeFeedbackFilter(value: string | number | boolean | undefined) {
+  if (value !== 'ALL' && value !== 'PENDING' && value !== 'REPLIED') return
+  feedbackStatusFilter.value = value
+  loadCurrent()
+}
+async function submitFeedback() {
+  const content = feedbackForm.content.trim()
+  if (content.length < 2) return ElMessage.warning('请填写至少 2 个字符的反馈内容')
+  try {
+    feedbackSubmitting.value = true
+    await portalApi.submitFeedback({ category: feedbackForm.category, content, contact: feedbackForm.contact.trim() || undefined })
+    Object.assign(feedbackForm, { category: 'SUGGESTION', content: '', contact: '' })
+    ElMessage.success('反馈已提交，管理员回复后会显示在我的反馈中')
+    await loadCurrent()
+  } catch (error: any) { ElMessage.error(error?.response?.data?.error?.message ?? '提交反馈失败') } finally { feedbackSubmitting.value = false }
+}
+function feedbackCategoryLabel(category: string) { return ({ SUGGESTION: '功能建议', BUG: '问题反馈', PERFORMANCE: '性能体验', OTHER: '其他' } as Record<string, string>)[category] ?? category }
+function feedbackStatusLabel(status: string) { return status === 'REPLIED' ? '已回复' : '待回复' }
+function openFeedbackReply(item: Feedback) {
+  replyingFeedback.value = item
+  feedbackReplyContent.value = item.replyContent ?? ''
+  feedbackReplyDrawer.value = true
+}
+async function saveFeedbackReply() {
+  if (!replyingFeedback.value) return
+  const reply = feedbackReplyContent.value.trim()
+  if (!reply) return ElMessage.warning('请填写回复内容')
+  try {
+    feedbackReplySaving.value = true
+    await adminApi.replyFeedback(replyingFeedback.value.id, { reply })
+    feedbackReplyDrawer.value = false
+    ElMessage.success('回复已发送')
+    await loadCurrent()
+  } catch (error: any) { ElMessage.error(error?.response?.data?.error?.message ?? '回复失败') } finally { feedbackReplySaving.value = false }
+}
 
 onMounted(() => {
   loadLoginOptions()
@@ -370,8 +417,8 @@ onBeforeUnmount(() => {
 
   <main v-else :class="['shell', `shell--${workspace}`]">
     <aside class="rail"><div class="brand"><span class="brand-mark">A</span><div><b>AiNexus</b><small>{{ workspace === 'admin' ? 'ADMIN CONTROL' : 'USER PORTAL' }}</small></div></div>
-      <nav v-if="workspace === 'admin'" class="nav-list"><button :class="{active:adminPage==='overview'}" @click="goAdmin('overview')"><DataAnalysis />概览</button><button :class="{active:adminPage==='channels'}" @click="goAdmin('channels')"><Connection />账号池</button><button :class="{active:adminPage==='model-groups'}" @click="goAdmin('model-groups')"><Collection />模型组</button><button :class="{active:adminPage==='users'}" @click="goAdmin('users')"><User />用户</button><button :class="{active:adminPage==='user-groups'}" @click="goAdmin('user-groups')"><UserFilled />用户组</button><button :class="{active:adminPage==='usage'}" @click="goAdmin('usage')"><Monitor />用量统计</button><button :class="{active:adminPage==='ranking'}" @click="goAdmin('ranking')"><Trophy />使用排行榜</button><button :class="{active:adminPage==='logs'}" @click="goAdmin('logs')"><Tickets />调用日志</button><button :class="{active:adminPage==='sponsorships'}" @click="goAdmin('sponsorships')"><Trophy />赞助记录</button><button :class="{active:adminPage==='gateway'}" @click="goAdmin('gateway')"><Connection />网关设置</button><button :class="{active:adminPage==='system'}" @click="goAdmin('system')"><Setting />系统设置</button></nav>
-      <nav v-else class="nav-list"><button :class="{active:userPage==='marketplace'}" @click="goUser('marketplace')"><Collection />模型广场</button><button :class="{active:userPage==='keys'}" @click="goUser('keys')"><Key />API Keys</button><button :class="{active:userPage==='usage'}" @click="goUser('usage')"><Monitor />用量统计</button><button :class="{active:userPage==='ranking'}" @click="goUser('ranking')"><Trophy />使用排行榜</button><button :class="{active:userPage==='sponsor'}" @click="goUser('sponsor')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.6l-1-1a5.5 5.5 0 1 0-7.8 7.8l8.8 8.8 8.8-8.8a5.5 5.5 0 0 0 0-7.8Z"/></svg>赞助支持</button><button :class="{active:userPage==='settings'}" @click="goUser('settings')"><Setting />账户设置</button></nav>
+      <nav v-if="workspace === 'admin'" class="nav-list"><button :class="{active:adminPage==='overview'}" @click="goAdmin('overview')"><DataAnalysis />概览</button><button :class="{active:adminPage==='channels'}" @click="goAdmin('channels')"><Connection />账号池</button><button :class="{active:adminPage==='model-groups'}" @click="goAdmin('model-groups')"><Collection />模型组</button><button :class="{active:adminPage==='users'}" @click="goAdmin('users')"><User />用户</button><button :class="{active:adminPage==='user-groups'}" @click="goAdmin('user-groups')"><UserFilled />用户组</button><button :class="{active:adminPage==='feedback'}" @click="goAdmin('feedback')"><ChatDotRound />用户反馈</button><button :class="{active:adminPage==='usage'}" @click="goAdmin('usage')"><Monitor />用量统计</button><button :class="{active:adminPage==='ranking'}" @click="goAdmin('ranking')"><Trophy />使用排行榜</button><button :class="{active:adminPage==='logs'}" @click="goAdmin('logs')"><Tickets />调用日志</button><button :class="{active:adminPage==='sponsorships'}" @click="goAdmin('sponsorships')"><Trophy />赞助记录</button><button :class="{active:adminPage==='gateway'}" @click="goAdmin('gateway')"><Connection />网关设置</button><button :class="{active:adminPage==='system'}" @click="goAdmin('system')"><Setting />系统设置</button></nav>
+      <nav v-else class="nav-list"><button :class="{active:userPage==='marketplace'}" @click="goUser('marketplace')"><Collection />模型广场</button><button :class="{active:userPage==='keys'}" @click="goUser('keys')"><Key />API Keys</button><button :class="{active:userPage==='usage'}" @click="goUser('usage')"><Monitor />用量统计</button><button :class="{active:userPage==='ranking'}" @click="goUser('ranking')"><Trophy />使用排行榜</button><button :class="{active:userPage==='sponsor'}" @click="goUser('sponsor')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.6l-1-1a5.5 5.5 0 1 0-7.8 7.8l8.8 8.8 8.8-8.8a5.5 5.5 0 0 0 0-7.8Z"/></svg>赞助支持</button><button :class="{active:userPage==='feedback'}" @click="goUser('feedback')"><ChatDotRound />意见反馈</button><button :class="{active:userPage==='settings'}" @click="goUser('settings')"><Setting />账户设置</button></nav>
       <div class="rail-footer"><span class="live-dot" aria-hidden="true"></span><span>{{ session.username }} · {{ session.role }}</span><small>在线</small></div></aside>
     <section class="workspace" v-loading="loading"><header class="topbar"><div><p class="eyebrow">{{ workspace === 'admin' ? 'ADMIN CONSOLE' : 'USER WORKSPACE' }}</p><div class="topbar-title"><h1>{{ title }}</h1><span v-if="workspace==='admin' && adminPage==='overview' && overviewUpdatedAt" class="update-stamp">数据更新于 {{ overviewUpdatedAt }}</span></div></div><div class="workspace-actions"><button v-if="isAdmin" type="button" class="top-action top-action-primary" @click="switchWorkspace(workspace==='admin'?'user':'admin')"><span class="top-action-icon"><Connection /></span><span>{{ workspace==='admin'?'切换用户端':'切换管理端' }}</span></button><button type="button" class="top-action top-action-logout" @click="logout"><span class="top-action-icon"><SwitchButton /></span><span>退出登录</span></button></div></header>
 
@@ -477,6 +524,54 @@ onBeforeUnmount(() => {
       <section v-else-if="workspace==='admin' && adminPage==='sponsorships'" class="page-panel"><div class="panel-head"><div><p class="eyebrow">VOLUNTARY SPONSORSHIP</p><h2>赞助记录</h2></div><el-button :icon="Refresh" @click="loadCurrent">刷新</el-button></div><el-table :data="sponsorshipOrders" class="dense-table"><el-table-column prop="outTradeNo" label="商户订单号" min-width="210"/><el-table-column prop="sponsorName" label="赞助人" min-width="130"/><el-table-column label="金额" width="130"><template #default="{row}"><b>¥ {{Number(row.amount).toFixed(2)}}</b></template></el-table-column><el-table-column label="支付方式" width="110"><template #default="{row}">{{row.paymentType || '未指定'}}</template></el-table-column><el-table-column label="状态" width="110"><template #default="{row}"><el-tag :type="row.status==='PAID'?'success':row.status==='CLOSED'?'info':'warning'">{{row.status==='PAID'?'已支付':row.status==='CLOSED'?'已关闭':'待支付'}}</el-tag></template></el-table-column><el-table-column prop="tradeNo" label="平台交易号" min-width="190" show-overflow-tooltip/><el-table-column label="支付时间" width="180"><template #default="{row}">{{formatDateTime(row.paidAt)}}</template></el-table-column><el-table-column label="创建时间" width="180"><template #default="{row}">{{formatDateTime(row.createTime)}}</template></el-table-column><template #empty><el-empty description="暂无赞助记录"/></template></el-table></section>
       <section v-else-if="workspace==='admin' && adminPage==='ranking'" class="page-panel ranking-page"><div class="panel-head"><div><p class="eyebrow">ORGANIZATION USAGE LEADERBOARD</p><h2>用户使用排行榜</h2><small>按累计总 Token 排序，来源于已记录的调用审计日志。</small></div><el-button :icon="Refresh" @click="loadCurrent">刷新</el-button></div><div class="ranking-summary"><article><span>参与排名用户</span><strong>{{usageRanking.totalUsers.toLocaleString()}}</strong></article><article><span>累计总 Token</span><strong>{{usageRanking.totalTokens.toLocaleString()}}</strong></article></div><el-table :data="usageRanking.rankings" class="dense-table ranking-table" :row-class-name="({ row }) => row.username === session?.username ? 'current-user-row' : ''"><el-table-column prop="rank" label="排名" width="90"><template #default="{row}"><span class="rank-badge" :class="`rank-${row.rank}`">{{row.rank}}</span></template></el-table-column><el-table-column prop="username" label="用户" min-width="200"><template #default="{row}"><div class="ranking-user"><span class="ranking-avatar">{{row.username.slice(0,1).toUpperCase()}}</span><b>{{row.username}}</b><el-tag v-if="row.username===session?.username" size="small" effect="plain">当前用户</el-tag></div></template></el-table-column><el-table-column prop="totalTokens" label="总 Token" width="170"><template #default="{row}"><b>{{row.totalTokens.toLocaleString()}}</b></template></el-table-column><el-table-column prop="requests" label="请求量" width="130"><template #default="{row}">{{row.requests.toLocaleString()}}</template></el-table-column><el-table-column prop="cacheTokens" label="缓存 Token" width="150"><template #default="{row}">{{row.cacheTokens.toLocaleString()}}</template></el-table-column><el-table-column prop="cacheHitRate" label="缓存命中率" width="135"><template #default="{row}">{{row.cacheHitRate.toFixed(2)}}%</template></el-table-column><template #empty><el-empty description="暂无可用于排名的调用数据"/></template></el-table></section>
       <section v-else-if="workspace==='admin' && adminPage==='logs'" class="page-panel"><div class="panel-head"><div><p class="eyebrow">REQUEST TRACE</p><h2>调用日志</h2></div><el-button :icon="Refresh" @click="loadCurrent">刷新</el-button></div><el-table :data="logs" class="dense-table" max-height="calc(100vh - 260px)"><el-table-column prop="requestId" label="Request ID" width="185" show-overflow-tooltip/><el-table-column label="供应商 / 账号" min-width="155"><template #default="{row}"><b>{{detailValue(row.provider)}}</b><small class="sub">{{detailValue(row.upstreamAccount)}}</small></template></el-table-column><el-table-column label="请求 / 上游模型" min-width="175"><template #default="{row}"><b>{{detailValue(row.requestModel)}}</b><small class="sub">{{detailValue(row.upstreamModel)}}</small></template></el-table-column><el-table-column label="用户 / 用户组" min-width="150"><template #default="{row}"><b>{{detailValue(row.userName)}}</b><small class="sub">{{detailValue(row.userGroupNames)}}</small></template></el-table-column><el-table-column prop="inputTokens" label="输入" width="80"/><el-table-column prop="outputTokens" label="输出" width="80"/><el-table-column prop="totalTokens" label="总 Token" width="95"/><el-table-column prop="cacheTokens" label="缓存" width="80"/><el-table-column prop="statusCode" label="状态" width="80"><template #default="{row}"><el-tag :type="row.statusCode<400?'success':'danger'">{{row.statusCode}}</el-tag></template></el-table-column><el-table-column label="调用时间" width="175"><template #default="{row}">{{formatDateTime(row.createTime)}}</template></el-table-column><el-table-column label="操作" width="80" fixed="right"><template #default="{row}"><el-button link type="primary" @click="openLogDetail(asAuditLog(row))">查看</el-button></template></el-table-column></el-table></section>
+      <section v-else-if="workspace==='admin' && adminPage==='feedback'" class="page-panel feedback-admin-page">
+        <div class="panel-head">
+          <div>
+            <p class="eyebrow">USER VOICE</p>
+            <h2>用户反馈</h2>
+            <small>查看用户提交的反馈并回复；用户在「意见反馈」页面可以看到最近一次回复，修改回复会覆盖旧内容。</small>
+          </div>
+          <div class="workspace-actions">
+            <el-button :icon="Refresh" @click="loadCurrent">刷新</el-button>
+          </div>
+        </div>
+        <div class="feedback-filter-bar">
+          <el-radio-group :model-value="feedbackStatusFilter" size="small" @change="changeFeedbackFilter">
+            <el-radio-button value="ALL">全部</el-radio-button>
+            <el-radio-button value="PENDING">待回复</el-radio-button>
+            <el-radio-button value="REPLIED">已回复</el-radio-button>
+          </el-radio-group>
+          <span>当前显示 {{ feedbacks.length }} 条反馈</span>
+        </div>
+        <el-table :data="feedbacks" class="dense-table feedback-table">
+          <el-table-column prop="username" label="用户" width="130" />
+          <el-table-column label="类型" width="115">
+            <template #default="{row}"><el-tag size="small" effect="plain">{{ feedbackCategoryLabel(row.category) }}</el-tag></template>
+          </el-table-column>
+          <el-table-column label="反馈内容" min-width="300">
+            <template #default="{row}">
+              <p class="feedback-table-content">{{ row.content }}</p>
+              <small v-if="row.contact" class="sub">联系方式：{{ row.contact }}</small>
+            </template>
+          </el-table-column>
+          <el-table-column label="状态" width="100">
+            <template #default="{row}"><el-tag :type="row.status==='REPLIED'?'success':'warning'">{{ feedbackStatusLabel(row.status) }}</el-tag></template>
+          </el-table-column>
+          <el-table-column label="管理员回复" min-width="220">
+            <template #default="{row}">
+              <p v-if="row.replyContent" class="feedback-table-reply">{{ row.replyContent }}</p>
+              <small v-else class="sub">尚未回复</small>
+            </template>
+          </el-table-column>
+          <el-table-column label="提交时间" width="175">
+            <template #default="{row}">{{ formatDateTime(row.createTime) }}</template>
+          </el-table-column>
+          <el-table-column label="操作" width="110" fixed="right">
+            <template #default="{row}"><el-button link type="primary" @click="openFeedbackReply(asFeedback(row))">{{ row.replyContent ? '修改回复' : '回复' }}</el-button></template>
+          </el-table-column>
+          <template #empty><el-empty description="暂无用户反馈" /></template>
+        </el-table>
+      </section>
       <section v-else-if="workspace==='admin'" class="empty-module"><p class="eyebrow">CONFIGURATION MODULE</p><h2>{{ title }}</h2><p>该模块已纳入控制台导航。模型组、用户组和配置项将在下一步接入可持久化的策略与分配规则。</p></section>
 
       <section v-else-if="userPage==='marketplace'" class="user-page user-marketplace"><div class="user-page-head"><div><p class="eyebrow">MODEL CATALOG</p><h2>模型广场</h2><p>选择已授权的模型 ID，用于 OpenAI 兼容接口调用。</p></div><el-button :icon="Refresh" circle plain aria-label="刷新模型目录" @click="loadCurrent"/></div><section class="connection-block"><div class="connection-heading"><span class="connection-label">OPENAI BASE URL</span><span class="connection-hint">请选择就近地址接入</span></div><div class="base-url-list"><div v-for="item in userBaseUrls" :key="`${item.name}-${item.url}`" class="base-url-value"><span class="base-url-name">{{item.name}}</span><code>{{item.url}}</code><el-tooltip content="复制 Base URL" placement="top"><el-button :icon="DocumentCopy" circle plain :aria-label="`复制 ${item.name} Base URL`" @click="copyBaseUrl(item.url)"/></el-tooltip></div></div><span class="connection-state"><i></i>可用</span></section><section class="catalog-block"><div class="catalog-title"><div><h3>已授权模型</h3><span>{{models.length}} 个模型</span></div><small>点击图标复制模型 ID</small></div><div class="model-grid user-model-grid"><article v-for="model in models" :key="model"><span class="model-symbol"><Collection /></span><div class="model-id-row"><b>{{model}}</b><small>MODEL ID</small></div><el-tooltip content="复制模型 ID" placement="top"><el-button :icon="DocumentCopy" circle plain aria-label="复制模型 ID" @click="copyModelId(model)"/></el-tooltip></article><p v-if="!models.length" class="empty-note">当前没有可用模型。</p></div></section></section>
@@ -539,10 +634,95 @@ onBeforeUnmount(() => {
         </div>
       </section>
       <section v-else-if="userPage==='settings'" class="user-page user-settings"><div class="user-page-head"><div><p class="eyebrow">ACCOUNT SECURITY</p><h2>账户设置</h2><p>更新账户密码后，需要使用新密码重新登录。</p></div></div><section class="user-password-block"><div class="user-password-intro"><span class="summary-icon"><Setting /></span><div><h3>修改登录密码</h3><p>新密码长度必须为 8 至 128 个字符。</p></div></div><el-form label-position="top" @submit.prevent="changeUserPassword"><el-form-item label="当前密码"><el-input v-model="userPasswordForm.currentPassword" type="password" show-password autocomplete="current-password"/></el-form-item><el-form-item label="新密码"><el-input v-model="userPasswordForm.newPassword" type="password" show-password autocomplete="new-password"/></el-form-item><el-form-item label="确认新密码"><el-input v-model="userPasswordForm.confirmPassword" type="password" show-password autocomplete="new-password" @keyup.enter="changeUserPassword"/></el-form-item><el-button type="primary" @click="changeUserPassword">更新密码</el-button></el-form></section><section class="user-password-block github-binding-block"><div class="user-password-intro"><span class="summary-icon"><Collection /></span><div><h3>GitHub 账号绑定</h3><p v-if="githubBinding.enabled">绑定后需为 <a :href="githubRepositoryUrl(githubBinding.repository)" target="_blank" rel="noopener noreferrer">{{githubRepositoryUrl(githubBinding.repository)}}</a> 点击 Star 才能使用 API Key 调用模型。</p><p v-else>管理员当前未启用 GitHub Star 准入。</p></div></div><div class="github-binding-state"><template v-if="githubBinding.bound"><div><span class="binding-label">已绑定 GitHub</span><b>@{{githubBinding.githubLogin}}</b><small v-if="githubBinding.starVerifiedAt">最近校验：{{formatDateTime(githubBinding.starVerifiedAt)}}</small><small v-if="githubBinding.refreshable">GitHub 授权支持自动续期</small><small v-else>当前为旧授权；OAuth App 开启可续期授权后，重新绑定即可升级。</small></div><el-button plain type="danger" @click="unbindGithub">解绑</el-button></template><template v-else><div><span class="binding-label">未绑定 GitHub</span><small>完成授权后将自动校验 Star 状态。</small></div><el-button type="primary" :disabled="!githubBinding.enabled" @click="authorizeGithub">绑定 GitHub</el-button></template></div></section></section>
+      <section v-else-if="userPage==='feedback'" class="user-page user-feedback">
+        <div class="user-page-head">
+          <div>
+            <p class="eyebrow">SHARE YOUR FEEDBACK</p>
+            <h2>意见反馈</h2>
+            <p>提交使用中遇到的问题或改进建议，管理员回复后会显示在「我的反馈」中。</p>
+          </div>
+          <el-button :icon="Refresh" circle plain aria-label="刷新反馈记录" @click="loadCurrent" />
+        </div>
+        <section class="feedback-submit-block">
+          <header class="feedback-block-head">
+            <div>
+              <h3>提交新反馈</h3>
+              <p>请尽量描述清楚使用场景与期望结果，不要填写密码或 API Key 等敏感信息。</p>
+            </div>
+            <span class="feedback-privacy">仅管理员可见</span>
+          </header>
+          <el-form label-position="top" class="feedback-form" @submit.prevent="submitFeedback">
+            <div class="feedback-form-row">
+              <el-form-item label="反馈类型">
+                <el-select v-model="feedbackForm.category">
+                  <el-option label="功能建议" value="SUGGESTION" />
+                  <el-option label="问题反馈" value="BUG" />
+                  <el-option label="性能体验" value="PERFORMANCE" />
+                  <el-option label="其他" value="OTHER" />
+                </el-select>
+              </el-form-item>
+              <el-form-item label="联系方式（选填）">
+                <el-input v-model="feedbackForm.contact" maxlength="128" placeholder="邮箱或企业微信，便于进一步沟通" />
+              </el-form-item>
+            </div>
+            <el-form-item label="反馈内容">
+              <el-input v-model="feedbackForm.content" type="textarea" :rows="5" maxlength="2000" show-word-limit placeholder="例如：希望模型广场支持按厂商筛选；或在调用某个模型时遇到的报错信息与复现步骤。" />
+            </el-form-item>
+            <div class="feedback-form-actions">
+              <small>提交后会出现在下方列表，可随时查看管理员回复。</small>
+              <el-button type="primary" :loading="feedbackSubmitting" @click="submitFeedback">提交反馈</el-button>
+            </div>
+          </el-form>
+        </section>
+        <section class="feedback-history">
+          <div class="feedback-history-head">
+            <div>
+              <p class="eyebrow">MY FEEDBACK</p>
+              <h3>我的反馈</h3>
+            </div>
+            <span>{{ feedbacks.length }} 条 · 待回复 {{ feedbackPendingCount }} 条</span>
+          </div>
+          <article v-for="item in feedbacks" :key="item.id" class="feedback-card">
+            <header>
+              <div class="feedback-card-meta">
+                <el-tag size="small" effect="plain">{{ feedbackCategoryLabel(item.category) }}</el-tag>
+                <span>{{ formatDateTime(item.createTime) }}</span>
+                <span v-if="item.contact" class="feedback-card-contact">联系方式：{{ item.contact }}</span>
+              </div>
+              <el-tag size="small" :type="item.status==='REPLIED'?'success':'warning'">{{ feedbackStatusLabel(item.status) }}</el-tag>
+            </header>
+            <p class="feedback-card-content">{{ item.content }}</p>
+            <div v-if="item.replyContent" class="feedback-card-reply">
+              <span class="feedback-reply-label">管理员回复<template v-if="item.repliedAt"> · {{ formatDateTime(item.repliedAt) }}</template></span>
+              <p>{{ item.replyContent }}</p>
+            </div>
+            <p v-else class="feedback-card-waiting">管理员还没有回复这条反馈。</p>
+          </article>
+          <el-empty v-if="!feedbacks.length" description="还没有提交过反馈" />
+        </section>
+      </section>
       <section v-else class="user-page user-usage"><div class="user-page-head"><div><p class="eyebrow">PERSONAL API CONSUMPTION</p><h2>用量统计</h2><p>按凭据和模型查看当前账户的调用消耗与可用额度。</p></div><el-button :icon="Refresh" circle plain aria-label="刷新用量" @click="loadCurrent"/></div><section class="usage-filter-block"><span>筛选范围</span><el-select v-model="userUsageFilter.apiKey" clearable filterable placeholder="全部 API Key" @change="loadCurrent"><el-option v-for="item in usage.apiKeys" :key="item" :label="item" :value="item"/></el-select><el-select v-model="userUsageFilter.model" clearable filterable placeholder="全部模型" @change="loadCurrent"><el-option v-for="item in usage.models" :key="item" :label="item" :value="item"/></el-select><el-button plain @click="Object.assign(userUsageFilter,{apiKey:'',model:''});loadCurrent()">重置</el-button></section><div class="usage-stat-grid"><article><span>请求量</span><strong>{{usage.requests.toLocaleString()}}</strong></article><article class="tone-brown"><span>异常调用</span><strong>{{usage.errors.toLocaleString()}}</strong></article><article><span>输入 Token</span><strong>{{usage.inputTokens.toLocaleString()}}</strong></article><article><span>输出 Token</span><strong>{{usage.outputTokens.toLocaleString()}}</strong></article><article class="tone-green"><span>总 Token</span><strong>{{usage.totalTokens.toLocaleString()}}</strong></article><article><span>缓存 Token</span><strong>{{usage.cacheTokens.toLocaleString()}}</strong><small>命中率 {{usage.cacheHitRate.toFixed(2)}}%</small></article></div><section class="token-activity user-token-activity"><div class="token-activity-head"><div><p class="eyebrow">DAILY TOKEN ACTIVITY</p><h3>每日 Token 活跃度</h3></div><div class="activity-summary"><b>{{userTokenActivity.activeDays}}</b><span>活跃日 · {{userTokenActivity.totalTokens.toLocaleString()}} Token</span></div></div><div class="activity-scroll"><div class="activity-grid"><div v-for="(week, weekIndex) in activityWeeks(userTokenActivity)" :key="weekIndex" class="activity-week"><el-tooltip v-for="day in week" :key="day.date" :content="activityTooltip(day)" placement="top"><span class="activity-cell" :class="`level-${activityLevel(day.totalTokens, userTokenActivity)}`" :aria-label="activityTooltip(day)"></span></el-tooltip></div></div></div><div class="activity-legend"><span>少</span><i class="level-0"></i><i class="level-1"></i><i class="level-2"></i><i class="level-3"></i><i class="level-4"></i><span>多</span></div></section><section class="quota-panel user-quota-panel"><div class="quota-heading"><div><p class="eyebrow">CURRENT PERIOD QUOTA</p><h3>剩余配额</h3></div><span>按用户组周期结算</span></div><div class="quota-list"><article v-for="row in usage.quotas" :key="row.userGroup"><div class="quota-group-name"><b>{{row.userGroup}}</b><span>{{row.period}}</span></div><div class="quota-dimensions"><div class="quota-dimension"><div class="quota-dimension-head"><span>个人配额</span><b>{{row.personalRemaining === null || row.personalRemaining === undefined ? '不限制' : `${row.personalRemaining.toLocaleString()} 剩余`}}</b></div><div class="quota-bar"><i :style="{width: row.personalQuota ? `${Math.min(100, row.personalUsed / row.personalQuota * 100)}%` : '0%'}"></i></div><small>{{row.personalQuota ? `${row.personalUsed.toLocaleString()} / ${row.personalQuota.toLocaleString()} Token` : '未设置个人额度'}}</small></div><div class="quota-dimension"><div class="quota-dimension-head"><span>组共享配额</span><b>{{row.groupRemaining === null || row.groupRemaining === undefined ? '不限制' : `${row.groupRemaining.toLocaleString()} 剩余`}}</b></div><div class="quota-bar"><i :style="{width: row.groupQuota ? `${Math.min(100, row.groupUsed / row.groupQuota * 100)}%` : '0%'}"></i></div><small>{{row.groupQuota ? `${row.groupUsed.toLocaleString()} / ${row.groupQuota.toLocaleString()} Token` : '未设置组额度'}}</small></div></div></article><p v-if="!usage.quotas.length" class="empty-note">当前未分配用户组配额。</p></div></section></section>
     </section>
 
     <el-drawer v-model="logDetailDrawer" title="调用详情" size="620px"><template v-if="selectedLog"><div class="log-request-id">Request ID: <code>{{detailValue(selectedLog.requestId)}}</code></div><section class="log-section"><h3>基本信息</h3><el-descriptions :column="1" border><el-descriptions-item label="用户">{{detailValue(selectedLog.userName)}}</el-descriptions-item><el-descriptions-item label="用户组">{{detailValue(selectedLog.userGroupNames)}}</el-descriptions-item><el-descriptions-item label="API Key">{{detailValue(selectedLog.apiKeyName)}}</el-descriptions-item><el-descriptions-item label="模型组">{{detailValue(selectedLog.modelGroupNames)}}</el-descriptions-item><el-descriptions-item label="调用时间">{{formatDateTime(selectedLog.createTime)}}</el-descriptions-item></el-descriptions></section><section class="log-section"><h3>模型详情</h3><el-descriptions :column="1" border><el-descriptions-item label="上游账号">{{detailValue(selectedLog.upstreamAccount)}}</el-descriptions-item><el-descriptions-item label="请求模型">{{detailValue(selectedLog.requestModel)}}</el-descriptions-item><el-descriptions-item label="上游模型">{{detailValue(selectedLog.upstreamModel)}}</el-descriptions-item><el-descriptions-item label="流式类型">{{selectedLog.stream ? '流式' : '非流式'}}</el-descriptions-item><el-descriptions-item label="上游端点">{{detailValue(selectedLog.upstreamEndpoint)}}</el-descriptions-item><el-descriptions-item label="协议路径">{{detailValue(selectedLog.protocolPath)}}</el-descriptions-item></el-descriptions></section><section class="log-section"><h3>Token 用量</h3><el-descriptions :column="2" border><el-descriptions-item label="总 Token">{{detailValue(selectedLog.totalTokens)}}</el-descriptions-item><el-descriptions-item label="输入">{{detailValue(selectedLog.inputTokens)}}</el-descriptions-item><el-descriptions-item label="输出">{{detailValue(selectedLog.outputTokens)}}</el-descriptions-item><el-descriptions-item label="缓存">{{detailValue(selectedLog.cacheTokens)}}</el-descriptions-item></el-descriptions></section><section class="log-section"><h3>状态</h3><el-descriptions :column="1" border><el-descriptions-item label="结果"><el-tag :type="selectedLog.statusCode<400?'success':'danger'">{{selectedLog.statusCode<400?'成功':'失败'}}</el-tag></el-descriptions-item><el-descriptions-item label="上游状态码">{{detailValue(selectedLog.upstreamStatusCode)}}</el-descriptions-item><el-descriptions-item label="总耗时">{{detailValue(selectedLog.latencyMs)}} ms</el-descriptions-item><el-descriptions-item label="首字耗时">{{detailValue(selectedLog.firstTokenMs)}} ms</el-descriptions-item><el-descriptions-item label="排队耗时">{{detailValue(selectedLog.queueMs)}} ms</el-descriptions-item><el-descriptions-item label="上游累计耗时">{{detailValue(selectedLog.upstreamLatencyMs)}} ms</el-descriptions-item><el-descriptions-item label="错误码">{{detailValue(selectedLog.errorCode)}}</el-descriptions-item><el-descriptions-item label="错误信息">{{detailValue(selectedLog.errorMsg)}}</el-descriptions-item></el-descriptions></section></template></el-drawer>
+    <el-drawer v-model="feedbackReplyDrawer" :title="replyingFeedback?.replyContent ? '修改回复' : '回复用户反馈'" size="520px">
+      <template v-if="replyingFeedback">
+        <section class="feedback-reply-context">
+          <span class="feedback-reply-label">{{ replyingFeedback.username }} · {{ feedbackCategoryLabel(replyingFeedback.category) }} · {{ formatDateTime(replyingFeedback.createTime) }}</span>
+          <p>{{ replyingFeedback.content }}</p>
+          <small v-if="replyingFeedback.contact">联系方式：{{ replyingFeedback.contact }}</small>
+        </section>
+        <el-form label-position="top">
+          <el-form-item label="回复内容">
+            <el-input v-model="feedbackReplyContent" type="textarea" :rows="6" maxlength="2000" show-word-limit placeholder="回复会显示在用户端的「我的反馈」中，请避免包含敏感信息。" />
+          </el-form-item>
+        </el-form>
+      </template>
+      <template #footer>
+        <el-button @click="feedbackReplyDrawer=false">取消</el-button>
+        <el-button type="primary" :loading="feedbackReplySaving" @click="saveFeedbackReply">保存回复</el-button>
+      </template>
+    </el-drawer>
     <el-drawer v-model="userGroupDialog" :title="editingUserGroup?'编辑用户组':'新增用户组'" size="620px"><el-form label-position="top" class="user-group-form"><el-form-item label="名称"><el-input v-model="userGroupForm.name" maxlength="128" show-word-limit/></el-form-item><el-form-item label="组最大并发"><el-input-number v-model="userGroupForm.maxConcurrent" :min="0"/><small>0 表示不限制。</small></el-form-item><el-form-item label="单 API Key 最大并发"><el-input-number v-model="userGroupForm.apiKeyMaxConcurrent" :min="0"/><small>0 表示不限制。</small></el-form-item><el-form-item label="组最大 Token 配额"><el-input-number v-model="userGroupForm.tokenQuota" :min="0" :step="1000"/><small>0 表示不限制。</small></el-form-item><el-form-item label="Token 配额更新周期"><el-select v-model="userGroupForm.quotaPeriod"><el-option label="日" value="DAY"/><el-option label="周" value="WEEK"/><el-option label="月" value="MONTH"/><el-option label="年" value="YEAR"/></el-select></el-form-item><el-form-item label="组内成员最大 Token 配额"><el-input-number v-model="userGroupForm.memberTokenQuota" :min="0" :step="1000"/><small>0 表示不限制。</small></el-form-item><el-form-item label="组内成员最大并发"><el-input-number v-model="userGroupForm.memberMaxConcurrent" :min="0"/><small>0 表示不限制。</small></el-form-item><el-form-item label="允许调用时间" class="span-2"><div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><el-time-picker v-model="userGroupForm.allowTimeStart" format="HH:mm" value-format="HH:mm" placeholder="开始时间" clearable style="width:140px"/><span>至</span><el-time-picker v-model="userGroupForm.allowTimeEnd" format="HH:mm" value-format="HH:mm" placeholder="结束时间" clearable style="width:140px"/><el-button link type="primary" @click="clearAllowTime">全天不限</el-button></div><small>仅在该时间段内允许该用户组发起调用；结束时间不晚于开始时间表示跨夜（如 22:00 至 06:00）；留空表示全天不限，时间以网关服务器时区为准。</small></el-form-item><el-form-item label="组内成员" class="span-2"><el-select v-model="userGroupForm.memberIds" multiple filterable collapse-tags collapse-tags-tooltip placeholder="选择普通用户" style="width:100%"><el-option v-for="member in availableGroupMembers" :key="member.id" :label="member.name" :value="member.id"/></el-select><small>组级和成员级配额将作用于这些成员。</small></el-form-item><el-form-item label="授权模型组" class="span-2"><el-select v-model="userGroupForm.modelGroupIds" multiple filterable collapse-tags collapse-tags-tooltip placeholder="选择可调用的模型组" style="width:100%"><el-option v-for="group in availableAuthorizedModelGroups" :key="group.id" :label="group.name" :value="group.id"/></el-select><small>成员仅允许调用这些模型组内的模型。</small></el-form-item><el-form-item label="备注" class="span-2"><el-input v-model="userGroupForm.remark" type="textarea" :rows="3" maxlength="512" show-word-limit/></el-form-item></el-form><template #footer><el-button @click="userGroupDialog=false">取消</el-button><el-button type="primary" @click="saveUserGroup">保存</el-button></template></el-drawer>
     <el-drawer v-model="modelGroupDialog" :title="editingModelGroup?'编辑模型组':'新增模型组'" size="560px"><el-form label-position="top"><el-form-item label="名称"><el-input v-model="modelGroupForm.name" maxlength="128" show-word-limit /></el-form-item><el-form-item label="模型"><el-select v-model="modelGroupForm.models" multiple filterable collapse-tags collapse-tags-tooltip placeholder="从已有模型中选择" style="width:100%"><el-option v-for="model in availableGroupModels" :key="model" :label="model" :value="model" /></el-select><small class="form-note">仅显示当前网关已可路由的模型。</small></el-form-item><el-form-item label="备注"><el-input v-model="modelGroupForm.remark" type="textarea" :rows="3" maxlength="512" show-word-limit /></el-form-item></el-form><template #footer><el-button @click="modelGroupDialog=false">取消</el-button><el-button type="primary" @click="saveModelGroup">保存</el-button></template></el-drawer>
     <el-drawer v-model="channelDialog" :title="editingChannel?'编辑渠道':'新增渠道'" size="620px"><el-form label-position="top" class="channel-form"><el-form-item label="渠道名称"><el-input v-model="channelForm.name" /></el-form-item><el-form-item label="供应商"><el-input v-model="channelForm.provider" /></el-form-item><el-form-item label="Base URL"><el-input v-model="channelForm.baseUrl" placeholder="https://api.example.com" /></el-form-item><el-form-item label="API Key"><el-input v-model="channelForm.apiKey" type="password" show-password :placeholder="editingChannel?'留空则保留当前密钥':''" /></el-form-item><el-form-item label="主协议"><el-select v-model="channelForm.protocol" @change="changeChannelPrimaryProtocol"><el-option label="OpenAI Chat Completions" value="openai-completions"/><el-option label="OpenAI Responses" value="openai-responses"/><el-option label="Anthropic Messages" value="anthropic-messages"/></el-select></el-form-item><el-form-item label="支持协议"><el-checkbox-group v-model="channelForm.supportedProtocols" @change="ensureChannelProtocol"><el-checkbox value="openai-completions">OpenAI Chat Completions</el-checkbox><el-checkbox value="openai-responses">OpenAI Responses</el-checkbox><el-checkbox value="anthropic-messages">Anthropic Messages</el-checkbox></el-checkbox-group><small>主协议决定生产请求格式。</small></el-form-item><el-form-item label="优先级"><el-input-number v-model="channelForm.priority" :min="0" /></el-form-item><el-form-item label="权重"><el-input-number v-model="channelForm.weight" :min="1" /></el-form-item><el-form-item label="最大并发"><el-input-number v-model="channelForm.maxConcurrent" :min="0" /></el-form-item><el-form-item label="默认测试模型"><el-input v-model="channelForm.defaultTestModel" /></el-form-item><el-form-item label="状态"><el-switch v-model="channelForm.status" :active-value="1" :inactive-value="0" /></el-form-item><el-form-item label="备注"><el-input v-model="channelForm.remark" /></el-form-item></el-form><div class="binding-head"><h3>模型绑定</h3><div><el-button text type="primary" :loading="discoveringModels" @click="discoverUpstreamModels">获取上游模型</el-button><el-button text type="primary" :icon="Plus" @click="addChannelModel">手动添加</el-button></div></div><p class="binding-note">获取模型会请求当前 Base URL 的 <code>/v1/models</code>，勾选后追加到表单，保存渠道后才写入数据库。</p><div v-for="(model,index) in channelForm.models" :key="index" class="binding-row"><el-input v-model="model.modelName" placeholder="对外模型名"/><el-input v-model="model.upstreamModelName" placeholder="上游模型名"/><el-button text type="danger" @click="removeChannelModel(index)">移除</el-button></div><template #footer><el-button @click="channelDialog=false">取消</el-button><el-button type="primary" @click="saveChannel">保存并刷新路由</el-button></template></el-drawer>

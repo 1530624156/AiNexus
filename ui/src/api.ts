@@ -121,6 +121,10 @@ export type UserGroup = { id: number; name: string; maxConcurrent: number; apiKe
 export type EpaySettings = { enabled: boolean; gatewayUrl?: string | null; merchantId?: string | null; merchantKey?: string | null; notifyUrl?: string | null; returnUrl?: string | null; defaultPaymentType?: string | null; signType?: string | null }
 export type SponsorshipOrder = { outTradeNo: string; sponsorName: string; amount: number; currency: string; paymentType?: string | null; status: 'PENDING' | 'PAID' | 'CLOSED'; tradeNo?: string | null; paidAt?: string | null; createTime?: string | null }
 export type SponsorshipRank = { sponsorName: string; amount: number }
+export type FeedbackCategory = 'SUGGESTION' | 'BUG' | 'PERFORMANCE' | 'OTHER'
+export type FeedbackStatus = 'PENDING' | 'REPLIED'
+export type Feedback = { id: number; accountId: number; username: string; category: FeedbackCategory; content: string; contact?: string | null; status: FeedbackStatus; replyContent?: string | null; repliedBy?: string | null; repliedAt?: string | null; createTime?: string; updateTime?: string }
+export type FeedbackSubmit = { category: FeedbackCategory; content: string; contact?: string }
 
 export const authApi = {
   login: (body: { username: string; password: string }) => api.post<Session>('/auth/login', body),
@@ -169,6 +173,8 @@ export const adminApi = {
   epaySettings: () => api.get<EpaySettings>('/admin/epay/settings'),
   updateEpaySettings: (body: EpaySettings) => api.put<EpaySettings>('/admin/epay/settings', body),
   sponsorshipOrders: () => api.get<SponsorshipOrder[]>('/admin/epay/sponsorship-orders'),
+  feedback: (params?: { status?: FeedbackStatus }) => api.get<Feedback[]>('/admin/feedback', { params }),
+  replyFeedback: (id: number, body: { reply: string }) => api.put<Feedback>(`/admin/feedback/${id}/reply`, body),
 }
 export const portalApi = {
   models: () => api.get<ModelCatalog>('/console/models'),
@@ -186,4 +192,6 @@ export const portalApi = {
   createSponsorshipOrder: (body: { amount: number; paymentType?: string }) => api.post<{ outTradeNo: string; paymentUrl: string }>('/console/sponsorship-orders', body),
   sponsorshipOrderStatus: (outTradeNo: string) => api.get<SponsorshipOrder>('/console/sponsorship-orders/status', { params: { outTradeNo } }),
   sponsorshipRanking: () => api.get<SponsorshipRank[]>('/console/sponsorship-ranking'),
+  feedback: () => api.get<Feedback[]>('/console/feedback'),
+  submitFeedback: (body: FeedbackSubmit) => api.post<Feedback>('/console/feedback', body),
 }
