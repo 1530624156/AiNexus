@@ -98,6 +98,8 @@ const feedbackReplyContent = ref('')
 const feedbackReplySaving = ref(false)
 const feedbackPendingCount = computed(() => feedbacks.value.filter(item => item.status === 'PENDING').length)
 // 商业广告位: 公开配置用于登录页与用户端展示，管理员表单单独维护草稿，避免保存前影响已展示内容。
+// 展示层类名一律用 promo-*（不用 ad-*/-ad）：通用广告拦截规则会按 [class$="-ad"]、[class*="ad-"]
+// 等选择器做 cosmetic 屏蔽，用广告命名会让已售出的广告位对拦截器用户静默消失。
 type AdSlotForm = { slotKey: AdSlotKey; status: AdStatus; logoUrl: string; title: string; subtitle: string; buttonText: string; linkUrl: string }
 const AD_SLOT_KEYS: AdSlotKey[] = ['LOGIN_ASIDE', 'USER_HERO', 'USER_SIDEBAR']
 function emptyAdSlot(slotKey: AdSlotKey): AdSlotForm { return { slotKey, status: 'LEASING', logoUrl: '', title: '', subtitle: '', buttonText: '', linkUrl: '' } }
@@ -504,26 +506,26 @@ onBeforeUnmount(() => {
   <main v-else-if="!session" class="login-shell">
     <div class="login-ambient login-ambient-one" aria-hidden="true"></div><div class="login-ambient login-ambient-two" aria-hidden="true"></div>
     <section class="login-aside"><div class="login-brand"><span class="login-mark">A</span><span>AiNexus</span></div><div class="login-intro"><p class="eyebrow">PRIVATE AI GATEWAY</p><h1>Control the<br><em>intelligent</em> edge.</h1><p>在一个可信入口中管理模型访问、团队凭据与网关运行状态。</p></div><div class="login-signals"><span><i></i>身份验证与角色分流</span><span><i></i>GitHub 授权可自动续期</span><span><i></i>企业级调用审计</span></div>
-      <aside v-if="loginAd" class="login-ad" role="complementary" aria-label="商业广告位">
+      <aside v-if="loginAd" class="login-promo" role="complementary" aria-label="推广位">
         <template v-if="loginAd.status === 'LEASING'">
-          <span class="ad-chip">广告</span>
-          <div class="ad-copy">
+          <span class="promo-chip">广告</span>
+          <div class="promo-copy">
             <b>{{ adTitle(loginAd, '广告位招租') }}</b>
             <small>{{ adSubtitle(loginAd, '登录页黄金曝光位，触达每一位进入控制台的成员。') }}</small>
           </div>
-          <button type="button" class="ad-cta" @click="openAdContact">立即联系</button>
+          <button type="button" class="promo-cta" @click="openAdContact">立即联系</button>
         </template>
         <template v-else>
-          <span class="ad-logo">
+          <span class="promo-logo">
             <img v-if="loginAd.logoUrl" :src="loginAd.logoUrl" alt="广告主 Logo" loading="lazy" />
             <template v-else>{{ (loginAd.title ?? 'A').slice(0, 1) }}</template>
           </span>
-          <div class="ad-copy">
+          <div class="promo-copy">
             <b>{{ loginAd.title }}</b>
             <small v-if="loginAd.subtitle">{{ loginAd.subtitle }}</small>
           </div>
-          <a v-if="loginAd.linkUrl" class="ad-cta" :href="loginAd.linkUrl" target="_blank" rel="noopener noreferrer sponsored">{{ adCtaText(loginAd, '了解更多') }}</a>
-          <span v-else class="ad-cta is-static">{{ adCtaText(loginAd, '了解更多') }}</span>
+          <a v-if="loginAd.linkUrl" class="promo-cta" :href="loginAd.linkUrl" target="_blank" rel="noopener noreferrer sponsored">{{ adCtaText(loginAd, '了解更多') }}</a>
+          <span v-else class="promo-cta is-static">{{ adCtaText(loginAd, '了解更多') }}</span>
         </template>
       </aside>
       <small class="login-version">AINEXUS CONTROL ROOM · V0.1</small></section>
@@ -535,52 +537,52 @@ onBeforeUnmount(() => {
       <nav v-if="workspace === 'admin'" class="nav-list"><button :class="{active:adminPage==='overview'}" @click="goAdmin('overview')"><DataAnalysis />概览</button><button :class="{active:adminPage==='channels'}" @click="goAdmin('channels')"><Connection />账号池</button><button :class="{active:adminPage==='model-groups'}" @click="goAdmin('model-groups')"><Collection />模型组</button><button :class="{active:adminPage==='users'}" @click="goAdmin('users')"><User />用户</button><button :class="{active:adminPage==='user-groups'}" @click="goAdmin('user-groups')"><UserFilled />用户组</button><button :class="{active:adminPage==='feedback'}" @click="goAdmin('feedback')"><ChatDotRound />用户反馈</button><button :class="{active:adminPage==='usage'}" @click="goAdmin('usage')"><Monitor />用量统计</button><button :class="{active:adminPage==='ranking'}" @click="goAdmin('ranking')"><Trophy />使用排行榜</button><button :class="{active:adminPage==='logs'}" @click="goAdmin('logs')"><Tickets />调用日志</button><button :class="{active:adminPage==='sponsorships'}" @click="goAdmin('sponsorships')"><Trophy />赞助记录</button><button :class="{active:adminPage==='gateway'}" @click="goAdmin('gateway')"><Connection />网关设置</button><button :class="{active:adminPage==='system'}" @click="goAdmin('system')"><Setting />系统设置</button></nav>
       <nav v-else class="nav-list"><button :class="{active:userPage==='marketplace'}" @click="goUser('marketplace')"><Collection />模型广场</button><button :class="{active:userPage==='keys'}" @click="goUser('keys')"><Key />API Keys</button><button :class="{active:userPage==='usage'}" @click="goUser('usage')"><Monitor />用量统计</button><button :class="{active:userPage==='ranking'}" @click="goUser('ranking')"><Trophy />使用排行榜</button><button :class="{active:userPage==='sponsor'}" @click="goUser('sponsor')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.6l-1-1a5.5 5.5 0 1 0-7.8 7.8l8.8 8.8 8.8-8.8a5.5 5.5 0 0 0 0-7.8Z"/></svg>赞助支持</button><button :class="{active:userPage==='feedback'}" @click="goUser('feedback')"><ChatDotRound />意见反馈</button><button :class="{active:userPage==='settings'}" @click="goUser('settings')"><Setting />账户设置</button></nav>
       <div class="rail-bottom">
-        <aside v-if="workspace==='user' && sidebarAd" class="rail-ad" role="complementary" aria-label="商业广告位">
+        <aside v-if="workspace==='user' && sidebarAd" class="rail-promo" role="complementary" aria-label="推广位">
           <template v-if="sidebarAd.status === 'LEASING'">
-            <div class="rail-ad-head">
-              <span class="rail-ad-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 10v3a1 1 0 0 0 1 1h2l4 3V6L7 9H5a1 1 0 0 0-1 1Z"/><path d="M15 9a4 4 0 0 1 0 6"/></svg></span>
-              <b class="rail-ad-title">{{ adTitle(sidebarAd, '广告位招租') }}</b>
+            <div class="rail-promo-head">
+              <span class="rail-promo-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 10v3a1 1 0 0 0 1 1h2l4 3V6L7 9H5a1 1 0 0 0-1 1Z"/><path d="M15 9a4 4 0 0 1 0 6"/></svg></span>
+              <b class="rail-promo-title">{{ adTitle(sidebarAd, '广告位招租') }}</b>
             </div>
-            <small class="rail-ad-line">{{ adSubtitle(sidebarAd, '虚位以待，期待与您合作。') }}</small>
-            <button type="button" class="rail-ad-link" @click="openAdContact">合作联系 <ArrowRight /></button>
+            <small class="rail-promo-line">{{ adSubtitle(sidebarAd, '虚位以待，期待与您合作。') }}</small>
+            <button type="button" class="rail-promo-link" @click="openAdContact">合作联系 <ArrowRight /></button>
           </template>
           <template v-else>
-            <header class="rail-ad-head">
-              <span class="rail-ad-logo">
+            <header class="rail-promo-head">
+              <span class="rail-promo-logo">
                 <img v-if="sidebarAd.logoUrl" :src="sidebarAd.logoUrl" alt="广告主 Logo" loading="lazy" />
                 <template v-else>{{ (sidebarAd.title ?? 'A').slice(0, 1) }}</template>
               </span>
-              <b class="rail-ad-title">{{ sidebarAd.title }}</b>
-              <span class="ad-chip">广告</span>
+              <b class="rail-promo-title">{{ sidebarAd.title }}</b>
+              <span class="promo-chip">广告</span>
             </header>
-            <p class="rail-ad-line">{{ sidebarAd.subtitle }}</p>
-            <a v-if="sidebarAd.linkUrl" class="rail-ad-cta" :href="sidebarAd.linkUrl" target="_blank" rel="noopener noreferrer sponsored">{{ adCtaText(sidebarAd, '立即体验') }} <span aria-hidden="true">›</span></a>
-            <span v-else class="rail-ad-cta is-static">{{ adCtaText(sidebarAd, '立即体验') }} <span aria-hidden="true">›</span></span>
+            <p class="rail-promo-line">{{ sidebarAd.subtitle }}</p>
+            <a v-if="sidebarAd.linkUrl" class="rail-promo-cta" :href="sidebarAd.linkUrl" target="_blank" rel="noopener noreferrer sponsored">{{ adCtaText(sidebarAd, '立即体验') }} <span aria-hidden="true">›</span></a>
+            <span v-else class="rail-promo-cta is-static">{{ adCtaText(sidebarAd, '立即体验') }} <span aria-hidden="true">›</span></span>
           </template>
         </aside>
         <div class="rail-footer"><span class="live-dot" aria-hidden="true"></span><span>{{ session.username }} · {{ session.role }}</span><small>在线</small></div>
       </div></aside>
     <section class="workspace" v-loading="loading"><header class="topbar"><div><p class="eyebrow">{{ workspace === 'admin' ? 'ADMIN CONSOLE' : 'USER WORKSPACE' }}</p><div class="topbar-title"><h1>{{ title }}</h1><span v-if="workspace==='admin' && adminPage==='overview' && overviewUpdatedAt" class="update-stamp">数据更新于 {{ overviewUpdatedAt }}</span></div></div>
-      <aside v-if="workspace==='user' && heroAd" class="hero-ad" role="complementary" aria-label="商业广告位">
-        <span class="ad-corner">广告</span>
+      <aside v-if="workspace==='user' && heroAd" class="hero-promo" role="complementary" aria-label="推广位">
+        <span class="promo-corner">广告</span>
         <template v-if="heroAd.status === 'LEASING'">
-          <div class="ad-copy">
+          <div class="promo-copy">
             <b>{{ adTitle(heroAd, '广告牌招租') }}</b>
             <small>{{ adSubtitle(heroAd, '虚位以待，合作请联系') }}</small>
           </div>
-          <button type="button" class="ad-cta ad-cta-sm" @click="openAdContact">立即联系</button>
+          <button type="button" class="promo-cta promo-cta-sm" @click="openAdContact">立即联系</button>
         </template>
         <template v-else>
-          <span class="ad-logo ad-logo-sm">
+          <span class="promo-logo promo-logo-sm">
             <img v-if="heroAd.logoUrl" :src="heroAd.logoUrl" alt="广告主 Logo" loading="lazy" />
             <template v-else>{{ (heroAd.title ?? 'A').slice(0, 1) }}</template>
           </span>
-          <div class="ad-copy">
+          <div class="promo-copy">
             <b>{{ heroAd.title }}</b>
             <small v-if="heroAd.subtitle">{{ heroAd.subtitle }}</small>
           </div>
-          <a v-if="heroAd.linkUrl" class="ad-cta ad-cta-sm" :href="heroAd.linkUrl" target="_blank" rel="noopener noreferrer sponsored">{{ adCtaText(heroAd, '立即了解') }}</a>
-          <span v-else class="ad-cta ad-cta-sm is-static">{{ adCtaText(heroAd, '立即了解') }}</span>
+          <a v-if="heroAd.linkUrl" class="promo-cta promo-cta-sm" :href="heroAd.linkUrl" target="_blank" rel="noopener noreferrer sponsored">{{ adCtaText(heroAd, '立即了解') }}</a>
+          <span v-else class="promo-cta promo-cta-sm is-static">{{ adCtaText(heroAd, '立即了解') }}</span>
         </template>
       </aside>
       <div class="workspace-actions"><button v-if="isAdmin" type="button" class="top-action top-action-primary" @click="switchWorkspace(workspace==='admin'?'user':'admin')"><span class="top-action-icon"><Connection /></span><span>{{ workspace==='admin'?'切换用户端':'切换管理端' }}</span></button><button type="button" class="top-action top-action-logout" @click="logout"><span class="top-action-icon"><SwitchButton /></span><span>退出登录</span></button></div></header>
@@ -684,14 +686,14 @@ onBeforeUnmount(() => {
       <section v-else-if="workspace==='admin' && adminPage==='users'" class="page-panel"><div class="panel-head"><div><p class="eyebrow">IDENTITY DIRECTORY</p><h2>用户</h2></div><div class="workspace-actions"><el-button :icon="Refresh" @click="loadCurrent">刷新</el-button><el-button type="primary" :icon="Plus" @click="openCreateUser">新增用户</el-button></div></div><el-table :data="users" class="dense-table"><el-table-column prop="username" label="用户名" min-width="160" /><el-table-column label="额度与用量" min-width="290"><template #default="{row}"><div v-if="row.quotas.length" class="quota-progress-list"><div v-for="quota in row.quotas" :key="quota.userGroup" class="quota-progress"><div class="quota-progress-head"><span>{{quota.userGroup}} · {{quotaPeriodLabel(quota.period)}}</span><b v-if="quota.personalQuota">{{quota.personalUsed.toLocaleString()}} / {{quota.personalQuota.toLocaleString()}} Token</b><b v-else>不限制 · 已用 {{quota.personalUsed.toLocaleString()}} Token</b></div><el-progress v-if="quota.personalQuota" :percentage="quotaPercentage(quota.personalQuota, quota.personalUsed)" :status="quotaStatus(quota.personalQuota, quota.personalUsed)" :stroke-width="7" :show-text="false"/><small v-if="quota.personalQuota">剩余 {{(quota.personalRemaining ?? 0).toLocaleString()}} Token · 已用 {{quotaPercentage(quota.personalQuota, quota.personalUsed)}}%</small></div></div><span v-else class="sub">未加入用户组</span></template></el-table-column><el-table-column prop="remark" label="备注" min-width="160" show-overflow-tooltip /><el-table-column label="状态" width="100"><template #default="{row}"><el-tag :type="row.status?'success':'info'">{{row.status?'启用':'停用'}}</el-tag></template></el-table-column><el-table-column label="创建时间" width="180"><template #default="{row}">{{formatDateTime(row.createTime)}}</template></el-table-column><el-table-column label="操作" width="150" fixed="right"><template #default="{row}"><el-button link type="primary" @click="openEditUser(asAccount(row))">编辑</el-button><el-button link type="danger" @click="removeUser(asAccount(row))">删除</el-button></template></el-table-column></el-table></section>
       <section v-else-if="workspace==='admin' && adminPage==='gateway'" class="page-panel gateway-settings"><div class="panel-head"><div><p class="eyebrow">GATEWAY RUNTIME CONTROLS</p><h2>网关设置</h2></div><div class="workspace-actions"><el-button :icon="Refresh" @click="loadCurrent">刷新</el-button><el-button type="primary" @click="saveGatewaySettings">保存设置</el-button></div></div><section class="settings-section"><h3>OpenAI 接入地址</h3><p>用户模型广场会展示以下地址。第一条同时作为兼容旧客户端的默认地址。</p><div class="access-url-list"><div v-for="(item, index) in gatewaySettings.accessUrls" :key="index" class="access-url-row"><el-input v-model="item.name" aria-label="接入地址名称" placeholder="例如：香港"/><el-input v-model="item.url" aria-label="OpenAI Base URL" placeholder="https://gateway.example.com/v1"/><el-tooltip content="删除地址" placement="top"><el-button :icon="Close" circle plain :disabled="gatewaySettings.accessUrls.length===1" aria-label="删除接入地址" @click="removeAccessUrl(index)"/></el-tooltip></div></div><el-button :icon="Plus" plain @click="addAccessUrl">新增接入地址</el-button><small>每条地址需要名称，支持 HTTP 和 HTTPS；保存时会自动补全 /v1。</small><el-form label-position="top"><el-form-item label="协议转换"><el-switch v-model="gatewaySettings.protocolConversionEnabled" active-text="开启" inactive-text="关闭"/><small>开启后，可在无可用原生账号时使用已支持的 Chat Completions、Responses 与 Anthropic Messages 直接转换，原生协议始终优先。</small></el-form-item></el-form></section><section class="settings-section"><h3>性能设置</h3><el-form label-position="top" class="gateway-performance-form"><el-form-item label="最大并发"><el-input-number v-model="gatewaySettings.maxConcurrent" :min="0"/><small>网关同时处理的最大请求数，0 表示不限制；超出部分进入等待队列。</small></el-form-item><el-form-item label="等待队列大小"><el-input-number v-model="gatewaySettings.queueCapacity" :min="0"/><small>并发占满时允许排队等待的最大请求数，为 0 或队列已满时新请求直接失败。</small></el-form-item><el-form-item label="非流式请求超时（秒）"><el-input-number v-model="gatewaySettings.nonStreamTimeoutSeconds" :min="1"/><small>上游非流式响应的读取和总调用超时。</small></el-form-item><el-form-item label="流式空闲超时（秒）"><el-input-number v-model="gatewaySettings.streamIdleTimeoutSeconds" :min="0"/><small>两段流式响应数据之间的最大等待时间，0 表示不限制。</small></el-form-item><el-form-item label="最大报文大小（MB）"><el-input-number v-model="gatewaySettings.maxPayloadMb" :min="1" :max="1024"/><small>超出限制的请求会在网关入口拒绝。</small></el-form-item></el-form></section></section>
       <section v-else-if="workspace==='admin' && adminPage==='system'" class="page-panel system-settings"><div class="panel-head"><div><p class="eyebrow">ADMINISTRATION SECURITY</p><h2>系统设置</h2></div><el-button :loading="githubStarCheckRunning" :disabled="!githubStarSettings.enabled" @click="runGithubStarCheck">立即校验 GitHub Star</el-button></div><section class="settings-section login-settings"><div><h3>登录方式</h3><p>开启后，已绑定 GitHub 的普通用户只能使用 GitHub 登录；未绑定 GitHub 的普通用户仍可使用账号密码；管理员始终可使用账号密码登录。</p></div><el-form label-position="top"><el-form-item label="只允许使用 GitHub 登录"><el-switch v-model="gatewaySettings.githubLoginOnly" active-text="开启" inactive-text="关闭"/></el-form-item><el-button type="primary" @click="saveLoginSettings">保存登录方式</el-button></el-form></section><section class="settings-section password-settings"><div><h3>管理员账号密码</h3><p>修改后当前控制台会话将退出，需要使用新密码重新登录。</p></div><el-form label-position="top" @submit.prevent="changeAdminPassword"><el-form-item label="当前密码"><el-input v-model="adminPasswordForm.currentPassword" type="password" show-password autocomplete="current-password"/></el-form-item><el-form-item label="新密码"><el-input v-model="adminPasswordForm.newPassword" type="password" show-password autocomplete="new-password"/><small>密码长度为 8 至 128 个字符。</small></el-form-item><el-form-item label="确认新密码"><el-input v-model="adminPasswordForm.confirmPassword" type="password" show-password autocomplete="new-password" @keyup.enter="changeAdminPassword"/></el-form-item><el-button type="primary" @click="changeAdminPassword">更新管理员密码</el-button></el-form></section><section class="settings-section github-star-settings"><div><h3>GitHub Star 准入</h3><p>启用后，普通用户的 API Key 必须绑定 GitHub 账号并 Star 指定仓库后，才可以调用模型。管理员和内部服务 Key 不受影响。</p></div><el-form label-position="top"><el-form-item label="启用 Star 准入"><el-switch v-model="githubStarSettings.enabled" active-text="开启" inactive-text="关闭"/></el-form-item><el-form-item label="GitHub 仓库"><el-input v-model="githubStarSettings.repository" placeholder="1530624156/AiNexus"/><small>填写 owner/repository 或完整 GitHub 仓库地址。</small></el-form-item><el-form-item label="公网根地址"><el-input v-model="githubStarSettings.publicBaseUrl" placeholder="http://ainexus.b509.cn"/><small>OAuth 回调地址为：{{(githubStarSettings.publicBaseUrl || '公网根地址') + '/api/console/github/callback'}}</small></el-form-item><el-form-item label="GitHub OAuth Client ID"><el-input v-model="githubStarSettings.oauthClientId" placeholder="OAuth App Client ID"/></el-form-item><el-form-item label="GitHub OAuth Client Secret"><el-input v-model="githubStarSettings.oauthClientSecret" type="password" show-password placeholder="OAuth App Client Secret"/><small>已保存的密钥不会回显；保持不修改时请不要清空。</small></el-form-item><el-form-item label="每日 Star 检查时间"><el-time-picker v-model="githubStarSettings.dailyCheckTime" value-format="HH:mm" format="HH:mm" placeholder="06:00"/><small>每天在此时间检查所有启用用户；未绑定、未 Star 或 GitHub 授权失效会自动停用 Key。GitHub 限流与网络异常仅记录结果，不会停用 Key。</small></el-form-item><el-button type="primary" @click="saveGithubStarSettings">保存 GitHub 准入设置</el-button></el-form><el-alert v-if="githubStarCheckResult" class="github-check-result" type="warning" :closable="false" show-icon><template #title>最近一次校验：检查 {{githubStarCheckResult.checkedUsers}} 位启用用户，Star 验证通过 {{githubStarCheckResult.verifiedBindings}} 个，停用 {{githubStarCheckResult.disabledKeys}} 个 API Key</template><template #default><div v-for="issue in githubStarCheckResult.unverified" :key="issue.username" class="github-check-issue"><b>{{issue.username}}</b><span v-if="issue.githubLogin"> @{{issue.githubLogin}}</span> · {{issue.reason}}</div><div v-if="!githubStarCheckResult.unverified.length">全部用户校验通过。</div></template></el-alert></section><section class="settings-section alipay-settings"><div><h3>易支付</h3><p>用于用户端发起一次性赞助支付。商户密钥只保存在服务器，保存后不会回显。</p></div><el-form label-position="top"><el-form-item label="启用支付宝支付"><el-switch v-model="epaySettings.enabled" active-text="开启" inactive-text="关闭"/></el-form-item><el-form-item label="易支付网关地址"><el-input v-model="epaySettings.gatewayUrl" placeholder="https://pay.example.com/submit.php"/></el-form-item><el-form-item label="商户 ID（PID）"><el-input v-model="epaySettings.merchantId" placeholder="1000"/></el-form-item><el-form-item label="商户密钥（KEY）"><el-input v-model="epaySettings.merchantKey" type="password" show-password placeholder="保存后保留占位文字则不修改"/></el-form-item><el-form-item label="异步通知地址"><el-input v-model="epaySettings.notifyUrl" placeholder="https://example.com/api/payments/epay/notify"/></el-form-item><el-form-item label="同步跳转地址"><el-input v-model="epaySettings.returnUrl" placeholder="https://example.com/"/></el-form-item><div class="alipay-option-grid"><el-form-item label="默认支付方式"><el-select v-model="epaySettings.defaultPaymentType"><el-option label="支付宝" value="alipay"/><el-option label="微信支付" value="wxpay"/><el-option label="QQ 钱包" value="qqpay"/></el-select></el-form-item><el-form-item label="签名类型"><el-input model-value="MD5" disabled/></el-form-item></div><el-button type="primary" @click="saveEpaySettings">保存易支付设置</el-button></el-form></section>
-      <section class="settings-section ad-settings">
+      <section class="settings-section promo-settings">
         <div>
           <h3>商业广告位</h3>
           <p>配置登录页与用户端的三处广告位。设为“关闭”后前端会直接隐藏对应卡片，不留空白；设为“招租中”时展示招租文案与下方全局招商联系方式。</p>
         </div>
-        <el-form label-position="top" class="ad-form" @submit.prevent="saveAds">
+        <el-form label-position="top" class="promo-form" @submit.prevent="saveAds">
           <el-form-item label="全局招商联系方式">
-            <div class="ad-contact-fields">
+            <div class="promo-contact-fields">
               <el-select v-model="adsForm.contact.type" aria-label="招商联系方式类型" style="width:138px">
                 <el-option label="微信号" value="WECHAT" />
                 <el-option label="QQ" value="QQ" />
@@ -700,12 +702,12 @@ onBeforeUnmount(() => {
                 <el-option label="跳转链接" value="LINK" />
               </el-select>
               <el-input v-model="adsForm.contact.value" :placeholder="adContactPlaceholder" maxlength="512" />
-              <img v-if="adContactQrPreview" class="ad-qr-preview" :src="adContactQrPreview" alt="招商二维码预览" />
+              <img v-if="adContactQrPreview" class="promo-qr-preview" :src="adContactQrPreview" alt="招商二维码预览" />
             </div>
             <small>二维码请填写图片地址（http(s) 或 / 开头的站内路径）；跳转链接会直接在新标签页打开。</small>
           </el-form-item>
-          <div class="ad-slot-grid">
-            <article v-for="slot in adsForm.slots" :key="slot.slotKey" class="ad-slot-editor">
+          <div class="promo-slot-grid">
+            <article v-for="slot in adsForm.slots" :key="slot.slotKey" class="promo-slot-editor">
               <header>
                 <div>
                   <b>{{ adSlotLabel(slot.slotKey) }}</b>
@@ -733,9 +735,9 @@ onBeforeUnmount(() => {
                 <el-form-item label="跳转链接">
                   <el-input v-model="slot.linkUrl" placeholder="https://example.com" maxlength="512" />
                 </el-form-item>
-                <small class="ad-slot-hint">{{ slot.status === 'LEASING' ? '招租中：展示“广告位招租”与“立即联系”，点击后展示全局招商联系方式。' : '已投放：展示广告主 Logo、主标题、副标题与行动按钮，跳转链接在新标签页打开。' }}</small>
+                <small class="promo-slot-hint">{{ slot.status === 'LEASING' ? '招租中：展示“广告位招租”与“立即联系”，点击后展示全局招商联系方式。' : '已投放：展示广告主 Logo、主标题、副标题与行动按钮，跳转链接在新标签页打开。' }}</small>
               </template>
-              <p v-else class="ad-slot-hint">该广告位已关闭，前端不渲染任何卡片，也不会占用布局空间。</p>
+              <p v-else class="promo-slot-hint">该广告位已关闭，前端不渲染任何卡片，也不会占用布局空间。</p>
             </article>
           </div>
           <el-button type="primary" :loading="adsSaving" @click="saveAds">保存广告位配置</el-button>
@@ -954,14 +956,14 @@ onBeforeUnmount(() => {
   </main>
 
   <el-dialog v-model="adContactDialog" title="商业合作联系" width="420px" append-to-body>
-    <div class="ad-contact">
+    <div class="promo-contact">
       <template v-if="ads.contact.type === 'QR'">
-        <img v-if="ads.contact.value" class="ad-contact-qr" :src="ads.contact.value" alt="招商二维码" />
+        <img v-if="ads.contact.value" class="promo-contact-qr" :src="ads.contact.value" alt="招商二维码" />
         <small>扫码添加管理员，洽谈广告位合作。</small>
       </template>
       <template v-else>
-        <span class="ad-contact-label">{{ adContactLabel(ads.contact.type) }}</span>
-        <code class="ad-contact-value">{{ ads.contact.value }}</code>
+        <span class="promo-contact-label">{{ adContactLabel(ads.contact.type) }}</span>
+        <code class="promo-contact-value">{{ ads.contact.value }}</code>
         <el-button type="primary" plain @click="copyText(ads.contact.value ?? '', adContactLabel(ads.contact.type))">复制</el-button>
       </template>
     </div>

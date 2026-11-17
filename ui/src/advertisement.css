@@ -1,6 +1,10 @@
-/* Commercial advertisement slots: glass cards for the login aside, the user workspace header and the user rail. */
+/* Commercial advertisement slots: glass cards for the login aside, the user workspace header and the user rail.
+   Naming note: the classes intentionally use a `promo-*` vocabulary instead of `ad-*`/`-ad`.
+   Generic ad-blocker cosmetic filters (EasyList / AdGuard) match selectors such as `[class$="-ad"]`,
+   `[class*="ad-"]` and `[aria-label*="ad"]`, which used to hide sold advertisement slots for every
+   visitor running a blocker. Keep new classes on the `promo-` side to avoid being filtered. */
 
-.ad-chip {
+.promo-chip {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -15,7 +19,7 @@
   white-space: nowrap;
 }
 
-.ad-corner {
+.promo-corner {
   position: absolute;
   top: -7px;
   right: 12px;
@@ -28,8 +32,8 @@
   letter-spacing: 0.8px;
 }
 
-.ad-copy { display: grid; gap: 2px; min-width: 0; }
-.ad-copy b {
+.promo-copy { display: grid; gap: 2px; min-width: 0; }
+.promo-copy b {
   overflow: hidden;
   color: var(--glass-ink);
   font-size: 13px;
@@ -39,7 +43,7 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.ad-copy small {
+.promo-copy small {
   overflow: hidden;
   color: #666a86;
   font-size: 11px;
@@ -48,7 +52,7 @@
   white-space: nowrap;
 }
 
-.ad-cta {
+.promo-cta {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -66,12 +70,12 @@
   cursor: pointer;
   transition: transform 0.16s ease, box-shadow 0.16s ease, filter 0.16s ease;
 }
-.ad-cta:hover { transform: translateY(-1px); box-shadow: 0 11px 22px rgba(92, 43, 215, 0.3); filter: brightness(1.03); }
-.ad-cta:focus-visible { outline: 3px solid rgba(109, 61, 237, 0.3); outline-offset: 2px; }
-.ad-cta.is-static { opacity: 0.72; box-shadow: none; cursor: default; }
-.ad-cta-sm { height: 29px; padding: 0 12px; font-size: 11px; }
+.promo-cta:hover { transform: translateY(-1px); box-shadow: 0 11px 22px rgba(92, 43, 215, 0.3); filter: brightness(1.03); }
+.promo-cta:focus-visible { outline: 3px solid rgba(109, 61, 237, 0.3); outline-offset: 2px; }
+.promo-cta.is-static { opacity: 0.72; box-shadow: none; cursor: default; }
+.promo-cta-sm { height: 29px; padding: 0 12px; font-size: 11px; }
 
-.ad-logo {
+.promo-logo {
   display: grid;
   place-items: center;
   flex: none;
@@ -84,11 +88,11 @@
   color: #6a45d4;
   font: 700 15px 'Inter', sans-serif;
 }
-.ad-logo img { width: 100%; height: 100%; object-fit: cover; }
-.ad-logo-sm { width: 30px; height: 30px; border-radius: 9px; font-size: 12px; }
+.promo-logo img { width: 100%; height: 100%; object-fit: cover; }
+.promo-logo-sm { width: 30px; height: 30px; border-radius: 9px; font-size: 12px; }
 
 /* Login page: below the feature list, above the version stamp. */
-.login-ad {
+.login-promo {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
@@ -106,7 +110,7 @@
 }
 
 /* User workspace header: horizontal card in the free space right of the page title. */
-.hero-ad {
+.hero-promo {
   position: relative;
   display: flex;
   flex: 0 1 380px;
@@ -129,7 +133,7 @@
 .rail .nav-list { flex: 0 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
 .rail-bottom { display: grid; flex: none; gap: 12px; margin-top: auto; }
 .rail-bottom .rail-footer { margin-top: 0; padding-top: 14px; }
-.rail-ad {
+.rail-promo {
   display: grid;
   gap: 9px;
   padding: 12px;
@@ -140,8 +144,8 @@
   backdrop-filter: blur(16px) saturate(140%);
   -webkit-backdrop-filter: blur(16px) saturate(140%);
 }
-.rail-ad-head { display: flex; align-items: center; gap: 8px; min-width: 0; }
-.rail-ad-icon {
+.rail-promo-head { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.rail-promo-icon {
   display: grid;
   place-items: center;
   flex: none;
@@ -151,8 +155,8 @@
   background: rgba(112, 69, 234, 0.1);
   color: #7045ea;
 }
-.rail-ad-icon svg { width: 15px; height: 15px; }
-.rail-ad-logo {
+.rail-promo-icon svg { width: 15px; height: 15px; }
+.rail-promo-logo {
   display: grid;
   place-items: center;
   flex: none;
@@ -164,8 +168,8 @@
   color: #6a45d4;
   font: 700 12px 'Inter', sans-serif;
 }
-.rail-ad-logo img { width: 100%; height: 100%; object-fit: cover; }
-.rail-ad-title {
+.rail-promo-logo img { width: 100%; height: 100%; object-fit: cover; }
+.rail-promo-title {
   min-width: 0;
   overflow: hidden;
   color: #2b2d4a;
@@ -174,8 +178,8 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.rail-ad .ad-chip { margin-left: auto; }
-.rail-ad-line {
+.rail-promo .promo-chip { margin-left: auto; }
+.rail-promo-line {
   display: -webkit-box;
   overflow: hidden;
   margin: 0;
@@ -185,7 +189,7 @@
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
 }
-.rail-ad-link {
+.rail-promo-link {
   display: inline-flex;
   align-items: center;
   gap: 4px;
@@ -197,10 +201,10 @@
   font: 600 10px 'Inter', sans-serif;
   cursor: pointer;
 }
-.rail-ad-link svg { width: 12px; height: 12px; }
-.rail-ad-link:hover { color: #5c2bd7; }
-.rail-ad-link:focus-visible { outline: 3px solid rgba(109, 61, 237, 0.28); outline-offset: 2px; border-radius: 4px; }
-.rail-ad-cta {
+.rail-promo-link svg { width: 12px; height: 12px; }
+.rail-promo-link:hover { color: #5c2bd7; }
+.rail-promo-link:focus-visible { outline: 3px solid rgba(109, 61, 237, 0.28); outline-offset: 2px; border-radius: 4px; }
+.rail-promo-cta {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -214,13 +218,13 @@
   text-decoration: none;
   transition: background 0.16s ease;
 }
-.rail-ad-cta:hover { background: rgba(112, 69, 234, 0.17); }
-.rail-ad-cta.is-static { opacity: 0.7; }
+.rail-promo-cta:hover { background: rgba(112, 69, 234, 0.17); }
+.rail-promo-cta.is-static { opacity: 0.7; }
 
 /* Contact dialog shared by every leasing card. */
-.ad-contact { display: grid; justify-items: center; gap: 10px; padding: 6px 0 2px; text-align: center; }
-.ad-contact-label { color: #8588a0; font: 600 10px 'DM Mono', monospace; letter-spacing: 1px; }
-.ad-contact-value {
+.promo-contact { display: grid; justify-items: center; gap: 10px; padding: 6px 0 2px; text-align: center; }
+.promo-contact-label { color: #8588a0; font: 600 10px 'DM Mono', monospace; letter-spacing: 1px; }
+.promo-contact-value {
   max-width: 100%;
   padding: 9px 14px;
   overflow-wrap: anywhere;
@@ -230,16 +234,16 @@
   color: #33345a;
   font: 600 14px 'DM Mono', monospace;
 }
-.ad-contact-qr { width: 190px; height: 190px; padding: 8px; border: 1px solid rgba(104, 92, 166, 0.14); border-radius: 14px; background: #fff; object-fit: contain; }
-.ad-contact small { color: #8588a0; font-size: 11px; line-height: 1.6; }
+.promo-contact-qr { width: 190px; height: 190px; padding: 8px; border: 1px solid rgba(104, 92, 166, 0.14); border-radius: 14px; background: #fff; object-fit: contain; }
+.promo-contact small { color: #8588a0; font-size: 11px; line-height: 1.6; }
 
 /* Administrator editor inside 系统设置 (the surrounding section stays a solid white settings card). */
-.ad-settings > div:first-child p { margin: 6px 0 18px; color: #6f7690; font-size: 12px; line-height: 1.7; }
-.ad-contact-fields { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
-.ad-contact-fields .el-input { max-width: 460px; }
-.ad-qr-preview { width: 44px; height: 44px; border: 1px solid rgba(104, 92, 166, 0.16); border-radius: 8px; background: #fff; object-fit: cover; }
-.ad-slot-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(255px, 1fr)); gap: 14px; margin: 6px 0 18px; }
-.ad-slot-editor {
+.promo-settings > div:first-child p { margin: 6px 0 18px; color: #6f7690; font-size: 12px; line-height: 1.7; }
+.promo-contact-fields { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.promo-contact-fields .el-input { max-width: 460px; }
+.promo-qr-preview { width: 44px; height: 44px; border: 1px solid rgba(104, 92, 166, 0.16); border-radius: 8px; background: #fff; object-fit: cover; }
+.promo-slot-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(255px, 1fr)); gap: 14px; margin: 6px 0 18px; }
+.promo-slot-editor {
   display: grid;
   align-content: start;
   gap: 10px;
@@ -248,54 +252,54 @@
   border-radius: 12px;
   background: rgba(112, 69, 234, 0.035);
 }
-.ad-slot-editor > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
-.ad-slot-editor > header b { display: block; color: var(--glass-ink); font-size: 12px; }
-.ad-slot-editor > header small { display: block; margin-top: 3px; color: #8588a0; font-size: 10px; line-height: 1.5; }
-.ad-slot-editor .el-form-item { margin-bottom: 0; }
-.ad-slot-editor .el-form-item__label { padding-bottom: 4px; color: #61647f; font-size: 11px; }
-.ad-slot-hint { margin: 0; color: #8588a0; font-size: 10px; line-height: 1.6; }
+.promo-slot-editor > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.promo-slot-editor > header b { display: block; color: var(--glass-ink); font-size: 12px; }
+.promo-slot-editor > header small { display: block; margin-top: 3px; color: #8588a0; font-size: 10px; line-height: 1.5; }
+.promo-slot-editor .el-form-item { margin-bottom: 0; }
+.promo-slot-editor .el-form-item__label { padding-bottom: 4px; color: #61647f; font-size: 11px; }
+.promo-slot-hint { margin: 0; color: #8588a0; font-size: 10px; line-height: 1.6; }
 
 /* Keep the header ad alive as the window narrows: shrink it instead of removing it, so the
    用户端顶部广告位 never silently disappears on laptop / non-maximised windows. */
 @media (max-width: 1320px) {
-  .hero-ad { flex-basis: 330px; }
-  .hero-ad .ad-copy small { display: none; }
+  .hero-promo { flex-basis: 330px; }
+  .hero-promo .promo-copy small { display: none; }
 }
 
 @media (max-width: 1080px) {
-  .hero-ad { flex-basis: 250px; gap: 8px; margin-right: 10px; padding: 7px 9px; }
-  .hero-ad .ad-logo { display: none; }
-  .hero-ad .ad-copy b { font-size: 12px; }
-  .hero-ad .ad-cta { height: 27px; padding: 0 10px; font-size: 11px; }
+  .hero-promo { flex-basis: 250px; gap: 8px; margin-right: 10px; padding: 7px 9px; }
+  .hero-promo .promo-logo { display: none; }
+  .hero-promo .promo-copy b { font-size: 12px; }
+  .hero-promo .promo-cta { height: 27px; padding: 0 10px; font-size: 11px; }
 }
 
 /* The rail keeps its card until it collapses into the 64px icon rail at 900px. */
 @media (max-width: 900px) {
-  .login-ad { display: none; }
+  .login-promo { display: none; }
 }
 
 /* Collapsed rail: shrink the card to a compact glass tile instead of dropping it, so the
    sidebar slot still renders on narrow windows. */
 @media (max-width: 900px) {
   .rail-bottom { grid-template-columns: minmax(0, 1fr); width: 100%; min-width: 0; }
-  .rail-ad { width: 100%; min-width: 0; justify-items: center; gap: 6px; padding: 6px 4px; }
-  .rail-ad-title, .rail-ad-line, .rail-ad .ad-chip { display: none; }
-  .rail-ad-head { justify-content: center; }
-  .rail-ad-icon, .rail-ad-logo { width: 24px; height: 24px; }
-  .rail-ad-link { justify-self: center; font-size: 0; }
-  .rail-ad-link svg { display: none; }
-  .rail-ad-link::after { content: '广告'; font-size: 8px; font-weight: 700; letter-spacing: 0.5px; }
-  .rail-ad-cta { width: 100%; height: 24px; font-size: 0; }
-  .rail-ad-cta span { font-size: 13px; }
+  .rail-promo { width: 100%; min-width: 0; justify-items: center; gap: 6px; padding: 6px 4px; }
+  .rail-promo-title, .rail-promo-line, .rail-promo .promo-chip { display: none; }
+  .rail-promo-head { justify-content: center; }
+  .rail-promo-icon, .rail-promo-logo { width: 24px; height: 24px; }
+  .rail-promo-link { justify-self: center; font-size: 0; }
+  .rail-promo-link svg { display: none; }
+  .rail-promo-link::after { content: '广告'; font-size: 8px; font-weight: 700; letter-spacing: 0.5px; }
+  .rail-promo-cta { width: 100%; height: 24px; font-size: 0; }
+  .rail-promo-cta span { font-size: 13px; }
   .rail-bottom .rail-footer { min-width: 0; overflow: hidden; }
   .rail-bottom .rail-footer span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .rail-bottom .rail-footer small { display: none; }
 }
 
 @media (max-width: 640px) {
-  .hero-ad { display: none; }
+  .hero-promo { display: none; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .ad-cta, .rail-ad-cta { transition: none; }
+  .promo-cta, .rail-promo-cta { transition: none; }
 }
