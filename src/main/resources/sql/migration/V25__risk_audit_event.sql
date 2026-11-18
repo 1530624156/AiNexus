@@ -11,7 +11,7 @@ CREATE TABLE IF NOT EXISTS `risk_audit_event` (
     `risk_score` INT NOT NULL,
     `matched_signals` VARCHAR(512) NOT NULL COMMENT 'Rule identifiers, no raw prompt',
     `content_fingerprint` VARCHAR(64) NOT NULL COMMENT 'SHA-256 of extracted text',
-    `content_preview` VARCHAR(280) NULL COMMENT 'Reserved; prompt excerpts are not persisted',
+    `content_preview` VARCHAR(280) NULL COMMENT 'Credential-redacted review excerpt; never full request body',
     `review_status` VARCHAR(32) NOT NULL DEFAULT 'PENDING',
     `create_time` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (`id`),

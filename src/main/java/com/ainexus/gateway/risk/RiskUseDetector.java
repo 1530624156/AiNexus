@@ -13,7 +13,7 @@ import java.util.regex.Pattern;
 
 /**
  * Classifies only clearly non-development scenarios. Results are review candidates,
- * never enforcement decisions. Prompt content is represented only by a SHA-256 fingerprint.
+ * never enforcement decisions. Review content is truncated and credential-redacted before persistence.
  */
 @Component
 public class RiskUseDetector {
@@ -50,7 +50,7 @@ public class RiskUseDetector {
             }
         }
         if (signals.isEmpty()) return null;
-        return new Detection(category, Math.min(score, 100), String.join(",", signals), fingerprint(text), null);
+        return new Detection(category, Math.min(score, 100), String.join(",", signals), fingerprint(text), reviewPreview(text));
     }
 
     private String extractText(byte[] body) {
@@ -84,6 +84,12 @@ public class RiskUseDetector {
         }
     }
 
+    private String reviewPreview(String text) {
+        String compact = text.replaceAll("\\s+", " ").trim();
+        compact = compact.replaceAll("(?i)(sk-[a-z0-9_-]{8,}|bearer\\s+[a-z0-9._-]{12,})", "[REDACTED]");
+        compact = compact.replaceAll("(?i)(api[_ -]?key|authorization|token|password)\\s*[:=]\\s*[^,;\\s]+", "$1=[REDACTED]");
+        return compact.length() <= 280 ? compact : compact.substring(0, 280) + "...";
+    }
 
     private record Rule(String category, String signal, int score, Pattern pattern) {
         private Rule(String category, String signal, int score, String expression) {

@@ -26,6 +26,7 @@ public class RiskAuditService {
                 row.setRiskScore(event.score());
                 row.setMatchedSignals(truncate(event.signals(), 512));
                 row.setContentFingerprint(truncate(event.fingerprint(), 64));
+                row.setContentPreview(truncate(event.preview(), 280));
                 row.setReviewStatus("PENDING");
                 riskAuditEventMapper.insert(row);
             } catch (Exception e) {

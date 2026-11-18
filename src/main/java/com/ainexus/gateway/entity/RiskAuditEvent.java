@@ -9,7 +9,7 @@ import java.time.LocalDateTime;
 
 /**
  * A privacy-preserving candidate event for manual acceptable-use review.
- * Request bodies and prompt excerpts are intentionally never stored here.
+ * Only a credential-redacted, 280-character review excerpt is retained; full request bodies are never stored.
  */
 @Data
 @TableName("risk_audit_event")
