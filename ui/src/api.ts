@@ -131,6 +131,8 @@ export type AdContactType = 'WECHAT' | 'QQ' | 'EMAIL' | 'QR' | 'LINK'
 export type AdContact = { type: AdContactType; value?: string | null }
 export type AdSlot = { slotKey: AdSlotKey; status: AdStatus; logoUrl?: string | null; title?: string | null; subtitle?: string | null; buttonText?: string | null; linkUrl?: string | null }
 export type AdsConfig = { contact: AdContact; slots: AdSlot[] }
+export type RiskEvent = { id: number; requestId?: string; accountId?: number; userName?: string; appName?: string; riskCategory: string; riskScore: number; matchedSignals: string; contentFingerprint: string; contentPreview?: string; reviewStatus: string; createTime: string }
+export type RiskSummary = { todayEvents: number; pendingReview: number; categories: Record<string, number>; notice: string }
 
 export const authApi = {
   login: (body: { username: string; password: string }) => api.post<Session>('/auth/login', body),
@@ -183,6 +185,8 @@ export const adminApi = {
   replyFeedback: (id: number, body: { reply: string }) => api.put<Feedback>(`/admin/feedback/${id}/reply`, body),
   ads: () => api.get<AdsConfig>('/admin/ads'),
   updateAds: (body: AdsConfig) => api.put<AdsConfig>('/admin/ads', body),
+  riskSummary: () => api.get<RiskSummary>('/admin/risk-monitor/summary'),
+  riskEvents: (params: { page: number; size: number; category?: string }) => api.get<{ records: RiskEvent[]; total: number }>('/admin/risk-monitor', { params }),
 }
 export const portalApi = {
   models: () => api.get<ModelCatalog>('/console/models'),

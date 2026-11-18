@@ -75,6 +75,7 @@ public class ChatController {
     private void relay(HttpServletRequest request, HttpServletResponse response, byte[] body) throws IOException {
         long startedAt = System.nanoTime();
         String requestId = java.util.UUID.randomUUID().toString();
+        request.setAttribute("ainexus.requestId", requestId);
         String model = null;
         Integer promptTokens = null;
         Throwable failure = null;

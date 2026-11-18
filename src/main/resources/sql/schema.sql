@@ -110,6 +110,25 @@ CREATE TABLE IF NOT EXISTS `request_audit_log` (
     KEY `idx_audit_model_created` (`request_model`, `create_time`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Asynchronous gateway request audit log';
 
+CREATE TABLE IF NOT EXISTS `risk_audit_event` (
+    `id` BIGINT NOT NULL AUTO_INCREMENT,
+    `request_id` VARCHAR(64) NULL,
+    `account_id` BIGINT NULL,
+    `user_name` VARCHAR(128) NULL,
+    `app_name` VARCHAR(128) NULL,
+    `risk_category` VARCHAR(64) NOT NULL,
+    `risk_score` INT NOT NULL,
+    `matched_signals` VARCHAR(512) NOT NULL,
+    `content_fingerprint` VARCHAR(64) NOT NULL,
+    `content_preview` VARCHAR(280) NULL COMMENT 'Reserved; prompt excerpts are not persisted',
+    `review_status` VARCHAR(32) NOT NULL DEFAULT 'PENDING',
+    `create_time` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (`id`),
+    KEY `idx_risk_created` (`create_time`),
+    KEY `idx_risk_category_created` (`risk_category`, `create_time`),
+    KEY `idx_risk_user_created` (`user_name`, `create_time`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Manual acceptable-use review candidates; never enforcement decisions';
+
 -- Development bootstrap Token. Production should replace it using your secret-management process.
 INSERT INTO `gateway_token` (`token`, `app_name`, `status`, `remark`)
 SELECT 'sk-ainexus-dev-team-a', 'dev-team-a', 1, 'Bootstrap development token'
