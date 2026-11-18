@@ -19,8 +19,6 @@ import java.util.regex.Pattern;
 public class RiskUseDetector {
     private static final List<Rule> RULES = List.of(
             new Rule("CHATBOT", "customer_service_bot", 45, "客服机器人|智能客服|问答机器人|知识库问答|机器人回复"),
-            new Rule("AGENT_PLATFORM", "agent_platform_integration", 70,
-                    "openclaw|open claw|claw|养鱼|养虾|养鱼养虾|agent 平台|agent平台|智能体平台"),
             new Rule("AUTOMATION", "non_coding_automation", 30, "自动回复客户|营销机器人|直播话术|带货脚本")
     );
 
