@@ -18,10 +18,11 @@ import java.util.concurrent.atomic.AtomicInteger;
 public class UserGroupConcurrencyService {
     private final UserGroupMemberMapper memberMapper;
     private final UserGroupMapper groupMapper;
+    private final GatewayRuntimeSettingsService settingsService;
     private final ConcurrentHashMap<Long, AtomicInteger> active = new ConcurrentHashMap<>();
 
     public Permit acquire(Long accountId) {
-        if (accountId == null) return Permit.NOOP;
+        if (accountId == null || settingsService.get().crazyModeEnabled()) return Permit.NOOP;
         List<UserGroup> groups = groups(accountId);
         for (UserGroup group : groups) {
             int limit = group.getMaxConcurrent() == null ? 0 : group.getMaxConcurrent();

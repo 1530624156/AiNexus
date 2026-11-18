@@ -20,5 +20,6 @@ public class GatewayRuntimeSetting {
     private Integer streamIdleTimeoutSeconds;
     private Integer maxPayloadMb;
     private Integer githubLoginOnly;
+    private Integer crazyModeEnabled;
     private LocalDateTime updateTime;
 }

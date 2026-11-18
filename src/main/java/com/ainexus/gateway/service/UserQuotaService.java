@@ -18,6 +18,7 @@ public class UserQuotaService {
     private final UserGroupMemberMapper memberMapper;
     private final UserGroupMapper groupMapper;
     private final UserGroupTokenQuotaService groupTokenQuotaService;
+    private final GatewayRuntimeSettingsService settingsService;
 
     public List<Quota> quotas(Long accountId) {
         List<Long> ids = memberMapper.selectList(new LambdaQueryWrapper<UserGroupMember>().eq(UserGroupMember::getAccountId, accountId))
@@ -28,6 +29,9 @@ public class UserQuotaService {
 
     private Quota quota(Long accountId, UserGroup group) {
         LocalDateTime start = groupTokenQuotaService.periodStart(group.getQuotaPeriod());
+        if (settingsService.get().crazyModeEnabled()) {
+            return new Quota(group.getName(), group.getQuotaPeriod(), null, 0, null, null, 0, null);
+        }
         long personalUsed = groupTokenQuotaService.usedByAccount(accountId, start);
         long personalQuota = group.getMemberTokenQuota() == null ? 0 : group.getMemberTokenQuota();
         long groupQuota = group.getTokenQuota() == null ? 0 : group.getTokenQuota();

@@ -111,7 +111,7 @@ curl http://localhost:8080/v1/models \
 
 ### 接真实厂商
 
-1. 新数据库执行 `src/main/resources/sql/schema.sql`；已有数据库按版本顺序执行 `src/main/resources/sql/migration/` 中尚未执行的脚本。升级 GitHub Star 准入时，必须执行 `V15__github_oauth_refresh_tokens.sql`；升级 Token 用量统计口径时，必须执行 `V16__normalize_audit_token_accounting.sql`。升级 GitHub 登录前，先执行 `SELECT github_login, COUNT(*) FROM account_github_binding GROUP BY github_login HAVING COUNT(*) > 1` 确认不存在重复值，再执行 `V17__github_login_unique_binding.sql`。升级仅允许 GitHub 登录功能时，执行 `V18__github_login_only.sql`。启用用户组“允许调用时间”限制时，必须执行 `V19__user_group_allow_time.sql`。升级必填邮箱字段时，必须执行 `V27__account_email.sql`；存量账户会先获得占位邮箱，用户可在“账户设置”中自行维护。GitHub 登录仅允许已绑定系统账号的 GitHub 身份，登录时会刷新该绑定的 OAuth 凭据。若需要 GitHub OAuth 自动续期，还需在 GitHub OAuth App 的设置中开启 **Expire user authorization tokens**，然后让已绑定用户重新授权一次，以获取 refresh token。
+1. 新数据库执行 `src/main/resources/sql/schema.sql`；已有数据库按版本顺序执行 `src/main/resources/sql/migration/` 中尚未执行的脚本。升级 GitHub Star 准入时，必须执行 `V15__github_oauth_refresh_tokens.sql`；升级 Token 用量统计口径时，必须执行 `V16__normalize_audit_token_accounting.sql`。升级 GitHub 登录前，先执行 `SELECT github_login, COUNT(*) FROM account_github_binding GROUP BY github_login HAVING COUNT(*) > 1` 确认不存在重复值，再执行 `V17__github_login_unique_binding.sql`。升级仅允许 GitHub 登录功能时，执行 `V18__github_login_only.sql`。启用用户组“允许调用时间”限制时，必须执行 `V19__user_group_allow_time.sql`。升级必填邮箱字段时，必须执行 `V27__account_email.sql`；存量账户会先获得占位邮箱，用户可在“账户设置”中自行维护。升级疯狂模式时，必须执行 `V28__gateway_crazy_mode.sql`；开启后会取消用户组和成员的 Token 配额、用户组并发限制。GitHub 登录仅允许已绑定系统账号的 GitHub 身份，登录时会刷新该绑定的 OAuth 凭据。若需要 GitHub OAuth 自动续期，还需在 GitHub OAuth App 的设置中开启 **Expire user authorization tokens**，然后让已绑定用户重新授权一次，以获取 refresh token。
 2. 一个渠道可绑定多个模型。例如 BigModel 对接智谱并绑定三个 GLM 模型：
    ```sql
    INSERT INTO channel

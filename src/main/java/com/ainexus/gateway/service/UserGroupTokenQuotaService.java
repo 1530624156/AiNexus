@@ -22,9 +22,10 @@ public class UserGroupTokenQuotaService {
     private final UserGroupMemberMapper memberMapper;
     private final UserGroupMapper groupMapper;
     private final RequestAuditLogMapper auditMapper;
+    private final GatewayRuntimeSettingsService settingsService;
 
     public void check(Long accountId) {
-        if (accountId == null) return;
+        if (accountId == null || settingsService.get().crazyModeEnabled()) return;
         List<Long> groupIds = memberMapper.selectList(new LambdaQueryWrapper<UserGroupMember>().eq(UserGroupMember::getAccountId, accountId))
                 .stream().map(UserGroupMember::getUserGroupId).toList();
         if (groupIds.isEmpty()) return;

@@ -43,6 +43,7 @@ public class GatewayRuntimeSettingsService {
         row.setMaxConcurrent(next.maxConcurrent()); row.setQueueCapacity(next.queueCapacity());
         row.setNonStreamTimeoutSeconds(next.nonStreamTimeoutSeconds()); row.setStreamIdleTimeoutSeconds(next.streamIdleTimeoutSeconds()); row.setMaxPayloadMb(next.maxPayloadMb());
         row.setGithubLoginOnly(next.githubLoginOnly() ? 1 : 0);
+        row.setCrazyModeEnabled(next.crazyModeEnabled() ? 1 : 0);
         mapper.updateById(row);
         current = next;
         return next;
@@ -56,7 +57,7 @@ public class GatewayRuntimeSettingsService {
         int streamIdleTimeout = nonNegative(request.streamIdleTimeoutSeconds(), "streamIdleTimeoutSeconds");
         int payload = positive(request.maxPayloadMb(), "maxPayloadMb");
         if (payload > 1024) throw BizException.badRequest("invalid_max_payload", "maxPayloadMb must be at most 1024");
-        return new Settings(accessUrls.getFirst().url(), accessUrls, Boolean.TRUE.equals(request.protocolConversionEnabled()), maxConcurrent, queueCapacity, nonStreamTimeout, streamIdleTimeout, payload, Boolean.TRUE.equals(request.githubLoginOnly()));
+        return new Settings(accessUrls.getFirst().url(), accessUrls, Boolean.TRUE.equals(request.protocolConversionEnabled()), maxConcurrent, queueCapacity, nonStreamTimeout, streamIdleTimeout, payload, Boolean.TRUE.equals(request.githubLoginOnly()), Boolean.TRUE.equals(request.crazyModeEnabled()));
     }
 
     private List<AccessUrl> normalizeAccessUrls(List<AccessUrl> requestedAccessUrls, String legacyAccessUrl) {
@@ -109,7 +110,8 @@ public class GatewayRuntimeSettingsService {
     private Settings from(GatewayRuntimeSetting row) {
         List<AccessUrl> accessUrls = readAccessUrls(row.getAccessUrls(), row.getAccessUrl());
         return new Settings(accessUrls.getFirst().url(), accessUrls, row.getProtocolConversionEnabled() != null && row.getProtocolConversionEnabled() == 1,
-                row.getMaxConcurrent(), row.getQueueCapacity(), row.getNonStreamTimeoutSeconds(), row.getStreamIdleTimeoutSeconds(), row.getMaxPayloadMb(), row.getGithubLoginOnly() != null && row.getGithubLoginOnly() == 1);
+                row.getMaxConcurrent(), row.getQueueCapacity(), row.getNonStreamTimeoutSeconds(), row.getStreamIdleTimeoutSeconds(), row.getMaxPayloadMb(), row.getGithubLoginOnly() != null && row.getGithubLoginOnly() == 1,
+                row.getCrazyModeEnabled() != null && row.getCrazyModeEnabled() == 1);
     }
 
     private List<AccessUrl> readAccessUrls(String json, String legacyAccessUrl) {
@@ -132,12 +134,12 @@ public class GatewayRuntimeSettingsService {
         }
     }
 
-    public record Update(String accessUrl, List<AccessUrl> accessUrls, Boolean protocolConversionEnabled, Integer maxConcurrent, Integer queueCapacity, Integer nonStreamTimeoutSeconds, Integer streamIdleTimeoutSeconds, Integer maxPayloadMb, Boolean githubLoginOnly) { }
+    public record Update(String accessUrl, List<AccessUrl> accessUrls, Boolean protocolConversionEnabled, Integer maxConcurrent, Integer queueCapacity, Integer nonStreamTimeoutSeconds, Integer streamIdleTimeoutSeconds, Integer maxPayloadMb, Boolean githubLoginOnly, Boolean crazyModeEnabled) { }
     public record AccessUrl(String name, String url) { }
-    public record Settings(String accessUrl, List<AccessUrl> accessUrls, boolean protocolConversionEnabled, int maxConcurrent, int queueCapacity, int nonStreamTimeoutSeconds, int streamIdleTimeoutSeconds, int maxPayloadMb, boolean githubLoginOnly) {
+    public record Settings(String accessUrl, List<AccessUrl> accessUrls, boolean protocolConversionEnabled, int maxConcurrent, int queueCapacity, int nonStreamTimeoutSeconds, int streamIdleTimeoutSeconds, int maxPayloadMb, boolean githubLoginOnly, boolean crazyModeEnabled) {
         static Settings defaults() {
             List<AccessUrl> accessUrls = List.of(new AccessUrl(DEFAULT_ACCESS_URL_NAME, "http://localhost:8080/v1"));
-            return new Settings(accessUrls.getFirst().url(), accessUrls, true, 0, 0, 180, 0, 16, false);
+            return new Settings(accessUrls.getFirst().url(), accessUrls, true, 0, 0, 180, 0, 16, false, false);
         }
     }
 }
