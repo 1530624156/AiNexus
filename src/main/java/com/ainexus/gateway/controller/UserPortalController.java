@@ -2,8 +2,11 @@ package com.ainexus.gateway.controller;
 
 import com.ainexus.gateway.auth.ConsoleAuthInterceptor;
 import com.ainexus.gateway.auth.ConsoleSessionService;
+import com.ainexus.gateway.common.BizException;
+import com.ainexus.gateway.entity.Account;
 import com.ainexus.gateway.entity.RequestAuditLog;
 import com.ainexus.gateway.entity.Token;
+import com.ainexus.gateway.mapper.AccountMapper;
 import com.ainexus.gateway.mapper.RequestAuditLogMapper;
 import com.ainexus.gateway.mapper.TokenMapper;
 import com.ainexus.gateway.service.GatewayRuntimeSettingsService;
@@ -13,6 +16,9 @@ import com.ainexus.gateway.service.UserQuotaService;
 import com.ainexus.gateway.service.GithubStarGateService;
 import com.ainexus.gateway.service.DailyTokenActivityService;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.Email;
+import jakarta.validation.constraints.NotBlank;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -36,6 +42,7 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class UserPortalController {
     private final RouteCacheService routeCacheService;
+    private final AccountMapper accountMapper;
     private final TokenMapper tokenMapper;
     private final RequestAuditLogMapper requestAuditLogMapper;
     private final ModelAuthorizationService modelAuthorizationService;
@@ -43,6 +50,20 @@ public class UserPortalController {
     private final UserQuotaService userQuotaService;
     private final GithubStarGateService githubStarGateService;
     private final DailyTokenActivityService dailyTokenActivityService;
+
+    @GetMapping("/profile")
+    public ProfileView profile(HttpServletRequest request) {
+        Account account = currentUserAccount(request);
+        return new ProfileView(account.getUsername(), account.getEmail());
+    }
+
+    @PatchMapping("/profile")
+    public ProfileView updateProfile(HttpServletRequest request, @Valid @RequestBody ProfileUpdateRequest body) {
+        Account account = currentUserAccount(request);
+        account.setEmail(body.email().trim());
+        accountMapper.updateById(account);
+        return new ProfileView(account.getUsername(), account.getEmail());
+    }
 
     @GetMapping("/models")
     public ModelCatalog models(HttpServletRequest request) {
@@ -114,8 +135,17 @@ public class UserPortalController {
     private long sum(List<RequestAuditLog> rows, java.util.function.Function<RequestAuditLog, Long> field) { return rows.stream().map(field).filter(java.util.Objects::nonNull).mapToLong(Long::longValue).sum(); }
     private double cacheHitRate(long inputTokens, long cacheTokens) { long totalPromptTokens = inputTokens + cacheTokens; return totalPromptTokens <= 0 ? 0D : Math.round(cacheTokens * 10_000D / totalPromptTokens) / 100D; }
     private ConsoleSessionService.SessionAccount account(HttpServletRequest request) { return (ConsoleSessionService.SessionAccount) request.getAttribute(ConsoleAuthInterceptor.ATTRIBUTE); }
+    private Account currentUserAccount(HttpServletRequest request) {
+        Account account = accountMapper.selectById(account(request).id());
+        if (account == null || !"USER".equals(account.getRole())) {
+            throw BizException.forbidden("user_role_required", "User role is required");
+        }
+        return account;
+    }
     private String mask(String value) { return value.length() < 10 ? "********" : value.substring(0, 7) + "****" + value.substring(value.length() - 4); }
     private String randomKey() { byte[] bytes = new byte[24]; new SecureRandom().nextBytes(bytes); return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes); }
+    public record ProfileUpdateRequest(@NotBlank @Email String email) { }
+    public record ProfileView(String username, String email) { }
     public record ModelCatalog(String baseUrl, List<GatewayRuntimeSettingsService.AccessUrl> accessUrls, List<String> models) { }
     public record ApiKeyView(Long id, String appName, String tokenMasked, Integer status, String remark, Object createTime) { }
     public record ApiKeyCreated(Long id, String token, String remark) { }

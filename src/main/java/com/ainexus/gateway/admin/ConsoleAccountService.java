@@ -24,6 +24,7 @@ public class ConsoleAccountService {
         if (count != null && count > 0) return;
         Account admin = new Account();
         admin.setUsername("admin");
+        admin.setEmail("admin@localhost");
         admin.setPasswordHash(passwordService.hash(properties.getConsole().getBootstrapAdminPassword()));
         admin.setRole("ADMIN");
         admin.setStatus(1);

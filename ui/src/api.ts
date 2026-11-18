@@ -93,7 +93,8 @@ api.interceptors.response.use(undefined, async (error: AxiosError) => {
 })
 
 export type Quota = { userGroup: string; period: string; personalQuota?: number | null; personalUsed: number; personalRemaining?: number | null; groupQuota?: number | null; groupUsed: number; groupRemaining?: number | null }
-export type Account = { id: number; username: string; remark?: string | null; status: number; quotas: Quota[]; createTime?: string }
+export type Account = { id: number; username: string; email: string; remark?: string | null; status: number; quotas: Quota[]; createTime?: string }
+export type UserProfile = { username: string; email: string }
 export type ModelBinding = { id?: number; modelName: string; upstreamModelName?: string | null; status?: number; remark?: string | null }
 export type Channel = { id: number; name: string; provider: string; protocol: string; supportedProtocols?: string[]; baseUrl: string; priority: number; weight: number; maxConcurrent: number; failureCount: number; defaultTestModel?: string | null; status: number; remark?: string | null; models: ModelBinding[] }
 export type AuditLog = { id: number; requestId?: string; appName?: string; apiKeyName?: string; userName?: string; userGroupNames?: string; modelGroupNames?: string; requestModel?: string; upstreamModel?: string; targetChannel?: string; provider?: string; upstreamAccount?: string; apiType?: string; stream?: number; upstreamEndpoint?: string; protocolPath?: string; inputTokens?: number; outputTokens?: number; totalTokens?: number; cacheTokens?: number; statusCode: number; upstreamStatusCode?: number; latencyMs: number; firstTokenMs?: number; queueMs?: number; upstreamLatencyMs?: number; errorCode?: string; errorMsg?: string; createTime: string }
@@ -174,7 +175,7 @@ export const adminApi = {
   updateUserGroup: (id: number, body: any) => api.put<UserGroup>(`/admin/user-groups/${id}`, body),
   deleteUserGroup: (id: number) => api.delete(`/admin/user-groups/${id}`),
   users: () => api.get<Account[]>('/admin/users'),
-  createUser: (body: { username: string; password: string; confirmPassword: string; remark?: string; status?: number }) => api.post<Account>('/admin/users', body),
+  createUser: (body: { username: string; email: string; password: string; confirmPassword: string; remark?: string; status?: number }) => api.post<Account>('/admin/users', body),
   updateUser: (id: number, body: { password?: string; confirmPassword?: string; remark?: string; status?: number }) => api.put<Account>(`/admin/users/${id}`, body),
   deleteUser: (id: number) => api.delete(`/admin/users/${id}`),
   logs: (params: { page: number; size: number }) => api.get<{ records: AuditLog[]; total: number }>('/admin/logs', { params }),
@@ -193,6 +194,8 @@ export const adminApi = {
   riskEvents: (params: { page: number; size: number; category?: string }) => api.get<{ records: RiskEvent[]; total: number }>('/admin/risk-monitor', { params }),
 }
 export const portalApi = {
+  profile: () => api.get<UserProfile>('/console/profile'),
+  updateProfile: (body: { email: string }) => api.patch<UserProfile>('/console/profile', body),
   models: () => api.get<ModelCatalog>('/console/models'),
   keys: () => api.get<ApiKey[]>('/console/api-keys'),
   createKey: (body: { remark?: string }) => api.post<{ id: number; token: string; remark?: string }>('/console/api-keys', body),

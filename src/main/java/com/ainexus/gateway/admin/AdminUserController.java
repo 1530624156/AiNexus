@@ -5,10 +5,9 @@ import com.ainexus.gateway.entity.Account;
 import com.ainexus.gateway.mapper.AccountMapper;
 import com.ainexus.gateway.service.UserQuotaService;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
-import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotNull;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.util.StringUtils;
@@ -45,6 +44,7 @@ public class AdminUserController {
         accountService.validateNewUsername(request.username());
         Account account = new Account();
         account.setUsername(request.username().trim());
+        account.setEmail(request.email().trim());
         account.setPasswordHash(accountService.hash(request.password()));
         account.setRole("USER");
         account.setStatus(request.status() == null ? 1 : request.status());
@@ -96,13 +96,13 @@ public class AdminUserController {
     }
 
     private UserView view(Account account) {
-        return new UserView(account.getId(), account.getUsername(), account.getRemark(), account.getStatus(),
+        return new UserView(account.getId(), account.getUsername(), account.getEmail(), account.getRemark(), account.getStatus(),
                 userQuotaService.quotas(account.getId()), account.getCreateTime(), account.getUpdateTime());
     }
 
-    public record UserCreateRequest(@NotBlank String username, @NotBlank String password, @NotBlank String confirmPassword,
-                                    String remark, Integer status) { }
+    public record UserCreateRequest(@NotBlank String username, @NotBlank @Email String email,
+                                    @NotBlank String password, @NotBlank String confirmPassword, String remark, Integer status) { }
     public record UserUpdateRequest(String password, String confirmPassword, String remark, Integer status) { }
-    public record UserView(Long id, String username, String remark, Integer status,
+    public record UserView(Long id, String username, String email, String remark, Integer status,
                            List<UserQuotaService.Quota> quotas, Object createTime, Object updateTime) { }
 }
