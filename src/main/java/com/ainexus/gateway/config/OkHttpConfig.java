@@ -26,20 +26,23 @@ import java.util.concurrent.TimeUnit;
 public class OkHttpConfig {
 
     @Bean
-    public OkHttpClient relayClient(GatewayProperties properties) {
-        return buildClient(properties, false);
+    public ConnectionPool upstreamConnectionPool(GatewayProperties properties) {
+        GatewayProperties.HttpClient http = properties.getHttpClient();
+        return new ConnectionPool(http.getPoolMaxIdle(), http.getPoolKeepAliveSeconds(), TimeUnit.SECONDS);
     }
 
     @Bean
-    public OkHttpClient streamRelayClient(GatewayProperties properties) {
-        return buildClient(properties, true);
+    public OkHttpClient relayClient(GatewayProperties properties, ConnectionPool upstreamConnectionPool) {
+        return buildClient(properties, upstreamConnectionPool, false);
     }
 
-    private OkHttpClient buildClient(GatewayProperties properties, boolean stream) {
-        GatewayProperties.HttpClient http = properties.getHttpClient();
+    @Bean
+    public OkHttpClient streamRelayClient(GatewayProperties properties, ConnectionPool upstreamConnectionPool) {
+        return buildClient(properties, upstreamConnectionPool, true);
+    }
 
-        ConnectionPool pool = new ConnectionPool(
-                http.getPoolMaxIdle(), http.getPoolKeepAliveSeconds(), TimeUnit.SECONDS);
+    private OkHttpClient buildClient(GatewayProperties properties, ConnectionPool pool, boolean stream) {
+        GatewayProperties.HttpClient http = properties.getHttpClient();
         Dispatcher dispatcher = new Dispatcher();
         dispatcher.setMaxRequests(512);
         dispatcher.setMaxRequestsPerHost(128);

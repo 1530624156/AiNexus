@@ -70,8 +70,9 @@ gateway:
     secret: ${GATEWAY_ADMIN_SECRET:change_me}
   http-client:
     # OkHttp 连接池: 网关需同时持有大量上游长连接
-    pool-max-idle: 64
-    pool-keep-alive-seconds: 300
+    # Two relay clients share one pool; retain only a bounded number of idle upstream sockets.
+    pool-max-idle: 32
+    pool-keep-alive-seconds: 120
     connect-timeout-ms: 10000
     read-timeout-ms: 180000
     # SSE 流式专用: 0 = 不超时, 由上游/客户端断开自然结束
@@ -97,7 +98,8 @@ gateway:
 logging:
   level:
     root: info
-    com.ainexus.gateway: debug
+    # Production default: debug request logs can retain large payload strings and inflate allocation pressure.
+    com.ainexus.gateway: info
   file:
     name: logs/ainexus-gateway.log
 
