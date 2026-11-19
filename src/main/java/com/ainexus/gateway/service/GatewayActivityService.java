@@ -23,6 +23,8 @@ public class GatewayActivityService {
         };
     }
     public int activeUsers() { return activeAccounts.size(); }
+    /** A snapshot of accounts with an in-flight gateway request. */
+    public java.util.List<Long> activeAccountIds() { return activeAccounts.keySet().stream().sorted().toList(); }
     public int streamingRequests() { return streams.get(); }
     @FunctionalInterface public interface Permit extends AutoCloseable { @Override void close(); }
 }

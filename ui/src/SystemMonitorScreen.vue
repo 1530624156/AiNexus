@@ -7,52 +7,36 @@ import { LineChart, GaugeChart, PieChart } from 'echarts/charts'
 import { GridComponent, LegendComponent, TooltipComponent } from 'echarts/components'
 import { CanvasRenderer } from 'echarts/renderers'
 import { BorderBox12, DigitalFlop, WaterLevelPond } from '@kjgl77/datav-vue3'
+import { adminApi, type MonitorSnapshot } from './api'
 
 // 页面级注册，避免改变现有控制台对 ECharts 的使用方式。
 echarts.use([LineChart, GaugeChart, PieChart, GridComponent, LegendComponent, TooltipComponent, CanvasRenderer])
 
-type MonitorUser = { name: string; ip: string; region: string; status: '活跃' | '空闲' }
+type MonitorUser = { name: string; ip: string; region: string; status: string }
 type MonitorLog = { time: string; level: 'INFO' | 'WARN' | 'ERROR'; message: string }
-type StreamPayload = Partial<{ online: number; concurrent: number; waiting: number; cpu: number; cpuPeak: number; memory: number; memoryUsed: number; coreGHz: number[] }>
 
 const emit = defineEmits<{ back: [] }>()
 const rootId = 'system-monitor-screen'
-const useMock = ref(true)
 const now = ref(new Date())
-const online = ref(286)
-const concurrent = ref(118)
-const waiting = ref(12)
-const cpu = ref(62.4)
-const cpuPeak = ref(84.6)
-const memory = ref(71.8)
-const memoryUsed = ref(45.9)
-const coreGHz = ref([3.62, 3.58, 3.71, 3.48, 3.82, 3.67, 3.53, 3.76])
-const uptimeSeconds = ref(19 * 86400 + 7 * 3600 + 42 * 60 + 18)
+const online = ref(0)
+const concurrent = ref(0)
+const waiting = ref(0)
+const cpu = ref(0)
+const cpuPeak = ref(0)
+const memory = ref(0)
+const memoryUsed = ref(0)
+const memoryTotal = ref(0)
+const cpuCores = ref(0)
+const uptimeSeconds = ref(0)
 const selectedLevel = ref<'ALL' | MonitorLog['level']>('ALL')
-const labels = ref<string[]>(Array.from({ length: 60 }, (_, index) => `${String(index - 59).padStart(2, '0')}s`))
-const concurrencyHistory = ref<number[]>(Array.from({ length: 60 }, (_, index) => 92 + Math.round(Math.sin(index / 5) * 18 + Math.random() * 14)))
-const cpuHistory = ref<number[]>(Array.from({ length: 60 }, (_, index) => 48 + Math.round(Math.sin(index / 4) * 14 + Math.random() * 11)))
-const memoryHistory = ref<number[]>(Array.from({ length: 60 }, (_, index) => 63 + Math.round(Math.sin(index / 9) * 6 + Math.random() * 5)))
-const todayHistory = ref<number[]>(Array.from({ length: 24 }, (_, index) => Math.max(18, Math.round(56 + Math.sin((index - 7) / 3) * 43 + Math.random() * 25))))
-const users = ref<MonitorUser[]>([
-  { name: 'l***_chen', ip: '10.24.18.72', region: '华东 · 上海', status: '活跃' },
-  { name: 'a***_wang', ip: '172.16.4.19', region: '华南 · 深圳', status: '活跃' },
-  { name: 'm***_liu', ip: '10.18.36.201', region: '华北 · 北京', status: '空闲' },
-  { name: 'r***_zhou', ip: '192.168.8.55', region: '西南 · 成都', status: '活跃' },
-  { name: 's***_lin', ip: '10.31.11.90', region: '华东 · 杭州', status: '活跃' },
-  { name: 'k***_yang', ip: '172.20.6.147', region: '华中 · 武汉', status: '空闲' },
-  { name: 'c***_xu', ip: '10.9.21.62', region: '华南 · 广州', status: '活跃' }
-])
-const logs = ref<MonitorLog[]>([
-  { time: '10:39:52', level: 'INFO', message: 'gateway-node-02 完成健康检查，延迟 14ms' },
-  { time: '10:39:49', level: 'INFO', message: '模型路由策略命中 primary-cluster' },
-  { time: '10:39:43', level: 'WARN', message: '队列深度接近预警线 70%' },
-  { time: '10:39:37', level: 'INFO', message: 'session pool 扩容至 320 个活动连接' },
-  { time: '10:39:28', level: 'ERROR', message: '上游节点 edge-sz-03 出现一次请求超时，已重试' },
-  { time: '10:39:21', level: 'INFO', message: '监控数据快照写入完成' }
-])
-let stream: EventSource | undefined
-let mockTimer: ReturnType<typeof setInterval> | undefined
+const labels = ref<string[]>([])
+const concurrencyHistory = ref<number[]>([])
+const cpuHistory = ref<number[]>([])
+const memoryHistory = ref<number[]>([])
+const todayHistory = ref<number[]>([])
+const users = ref<MonitorUser[]>([])
+const logs = ref<MonitorLog[]>([])
+let pollTimer: ReturnType<typeof setInterval> | undefined
 let clockTimer: ReturnType<typeof setInterval> | undefined
 
 const uptime = computed(() => {
@@ -84,58 +68,46 @@ const cpuOption = computed(() => ({ ...chartOption(cpuHistory.value, '#38d89f', 
   { name: '峰值核心', type: 'line', data: cpuHistory.value.map(value => Math.min(100, value + 17)), smooth: .35, showSymbol: false, lineStyle: { color: '#f2b74d', width: 1.5, type: 'dashed' } }
 ]}))
 const memoryOption = computed(() => chartOption(memoryHistory.value, '#9b8cff', '内存占用'))
-const historyOption = computed(() => ({ ...chartOption(todayHistory.value, '#f0b54a', '今日并发'), xAxis: { type: 'category', boundaryGap: false, data: Array.from({ length: 24 }, (_, index) => `${String(index).padStart(2, '0')}:00`), axisTick: { show: false }, axisLine: { lineStyle: { color: '#1c4565' } }, axisLabel: { color: '#6f9fbc', fontSize: 10, interval: 3 } } }))
+const historyOption = computed(() => ({ ...chartOption(todayHistory.value, '#f0b54a', '今日并发'), xAxis: { type: 'category', boundaryGap: false, data: labels.value, axisTick: { show: false }, axisLine: { lineStyle: { color: '#1c4565' } }, axisLabel: { color: '#6f9fbc', fontSize: 10, interval: 'auto' } } }))
 function gaugeOption(value: number, color: string, label: string) {
   return { series: [{ type: 'gauge', startAngle: 215, endAngle: -35, min: 0, max: 100, progress: { show: true, width: 11, roundCap: true, itemStyle: { color } }, axisLine: { lineStyle: { width: 11, color: [[1, '#173b58']] } }, pointer: { show: false }, axisTick: { show: false }, splitLine: { show: false }, axisLabel: { show: false }, detail: { valueAnimation: true, formatter: `{value|${value.toFixed(1)}%}\n{name|${label}}`, rich: { value: { color: '#e9fbff', fontSize: 20, fontWeight: 'bold', lineHeight: 28 }, name: { color: '#7fa9c0', fontSize: 10, lineHeight: 15 } } }, data: [{ value }] }] }
 }
 const cpuGauge = computed(() => gaugeOption(cpu.value, '#31d89b', '综合使用率'))
 const peakGauge = computed(() => gaugeOption(cpuPeak.value, '#f1b64a', '峰值核心负载'))
 
-function pushHistory(list: typeof concurrencyHistory, value: number) { list.value = [...list.value.slice(-59), value] }
-function formatClock(date: Date) { return new Intl.DateTimeFormat('zh-CN', { hourCycle: 'h23', hour: '2-digit', minute: '2-digit', second: '2-digit' }).format(date) }
-function randomize(value: number, delta: number, min: number, max: number) { return Math.max(min, Math.min(max, +(value + (Math.random() - .5) * delta).toFixed(1))) }
-function appendLog() {
-  const candidates: MonitorLog[] = [
-    { time: formatClock(new Date()), level: 'INFO', message: 'gateway-node-01 请求处理延迟保持稳定' },
-    { time: formatClock(new Date()), level: waiting.value > 25 ? 'WARN' : 'INFO', message: waiting.value > 25 ? '等待队列超过容量预警阈值' : '流量采样数据已同步至监控通道' },
-    { time: formatClock(new Date()), level: cpuPeak.value > 90 ? 'WARN' : 'INFO', message: cpuPeak.value > 90 ? '检测到峰值核心负载偏高' : '缓存命中率维持在正常区间' }
-  ]
-  logs.value = [candidates[Math.floor(Math.random() * candidates.length)], ...logs.value].slice(0, 18)
+function applySnapshot(snapshot: MonitorSnapshot) {
+  online.value = snapshot.online
+  concurrent.value = snapshot.concurrent
+  waiting.value = snapshot.waiting
+  cpu.value = snapshot.cpu
+  cpuPeak.value = snapshot.processCpu
+  memory.value = snapshot.memory
+  memoryUsed.value = snapshot.memoryUsedGb
+  memoryTotal.value = snapshot.memoryTotalGb
+  cpuCores.value = snapshot.cpuCores
+  uptimeSeconds.value = snapshot.uptimeSeconds
+  users.value = snapshot.users
+  logs.value = snapshot.logs
+  const lastMinute = snapshot.history.slice(-60)
+  labels.value = lastMinute.map(point => new Intl.DateTimeFormat('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23' }).format(point.time))
+  concurrencyHistory.value = lastMinute.map(point => point.concurrent)
+  todayHistory.value = snapshot.history.map(point => point.concurrent)
+  cpuHistory.value = [...cpuHistory.value.slice(-59), snapshot.cpu]
+  memoryHistory.value = [...memoryHistory.value.slice(-59), snapshot.memory]
 }
-function applyPayload(payload: StreamPayload) {
-  if (typeof payload.online === 'number') online.value = payload.online
-  if (typeof payload.concurrent === 'number') concurrent.value = payload.concurrent
-  if (typeof payload.waiting === 'number') waiting.value = payload.waiting
-  if (typeof payload.cpu === 'number') cpu.value = payload.cpu
-  if (typeof payload.cpuPeak === 'number') cpuPeak.value = payload.cpuPeak
-  if (typeof payload.memory === 'number') memory.value = payload.memory
-  if (typeof payload.memoryUsed === 'number') memoryUsed.value = payload.memoryUsed
-  if (payload.coreGHz?.length) coreGHz.value = payload.coreGHz
-  pushHistory(concurrencyHistory, concurrent.value)
-  pushHistory(cpuHistory, cpu.value)
-  pushHistory(memoryHistory, memory.value)
-}
-function runMock() {
-  mockTimer = setInterval(() => {
-    const nextConcurrent = Math.round(randomize(concurrent.value, 18, 72, 155))
-    const nextCpu = randomize(cpu.value, 12, 31, 92)
-    applyPayload({ online: Math.round(randomize(online.value, 14, 248, 322)), concurrent: nextConcurrent, waiting: Math.max(0, Math.round(nextConcurrent > 128 ? randomize(waiting.value, 8, 12, 42) : randomize(waiting.value, 8, 0, 18))), cpu: nextCpu, cpuPeak: randomize(Math.max(nextCpu + 12, cpuPeak.value), 10, 48, 98), memory: randomize(memory.value, 2.4, 62, 84), memoryUsed: randomize(memoryUsed.value, 1.6, 39, 54), coreGHz: coreGHz.value.map(value => randomize(value, .22, 3.2, 4.15)) })
-    appendLog()
-  }, 1000)
-}
-function connectStream() {
-  stream = new EventSource('/api/monitor/stream')
-  stream.onmessage = event => { try { applyPayload(JSON.parse(event.data) as StreamPayload) } catch { /* Ignore malformed monitoring frames. */ } }
-  stream.onerror = () => { stream?.close(); stream = undefined; useMock.value = true; runMock() }
+async function loadSnapshot() {
+  try { applySnapshot((await adminApi.monitorSnapshot()).data) }
+  catch { logs.value = [{ time: '--:--:--', level: 'ERROR', message: '无法读取实时监控数据，请确认管理员登录状态与后端服务。' }] }
 }
 function leaveScreen() { emit('back') }
 
 onMounted(() => {
   autofit.init({ el: `#${rootId}`, dw: 1920, dh: 1080, resize: true, transition: 0, allowScroll: false })
-  clockTimer = setInterval(() => { now.value = new Date(); uptimeSeconds.value++ }, 1000)
-  if (useMock.value) runMock(); else connectStream()
+  clockTimer = setInterval(() => { now.value = new Date() }, 1000)
+  loadSnapshot()
+  pollTimer = setInterval(loadSnapshot, 1000)
 })
-onUnmounted(() => { if (mockTimer) clearInterval(mockTimer); if (clockTimer) clearInterval(clockTimer); stream?.close(); autofit.off() })
+onUnmounted(() => { if (pollTimer) clearInterval(pollTimer); if (clockTimer) clearInterval(clockTimer); autofit.off() })
 </script>
 
 <template>
@@ -164,8 +136,8 @@ onUnmounted(() => { if (mockTimer) clearInterval(mockTimer); if (clockTimer) cle
 
       <section class="center-column">
         <BorderBox12 class="tech-panel cpu-panel"><div class="panel-body">
-          <div class="panel-title"><div><span class="section-index">03</span><h2>CPU 综合监控</h2></div><span class="frequency-label">BASE 3.60 GHz</span></div>
-          <div class="cpu-content"><div class="core-grid"><div v-for="(frequency, index) in coreGHz" :key="index" class="core-item"><span>CORE {{ String(index + 1).padStart(2, '0') }}</span><b>{{ frequency.toFixed(2) }}<small>GHz</small></b><i :style="{ width: `${frequency / 4.2 * 100}%` }"></i></div></div>
+          <div class="panel-title"><div><span class="section-index">03</span><h2>CPU 综合监控</h2></div><span class="frequency-label">{{ cpuCores }} LOGICAL CORES</span></div>
+          <div class="cpu-content"><div class="core-grid"><div class="core-item"><span>LOGICAL CORES</span><b>{{ cpuCores }}<small>个</small></b><i :style="{ width: '100%' }"></i></div><div class="core-item"><span>系统 CPU</span><b>{{ cpu.toFixed(1) }}<small>%</small></b><i :style="{ width: `${cpu}%` }"></i></div><div class="core-item"><span>JVM PROCESS</span><b>{{ cpuPeak.toFixed(1) }}<small>%</small></b><i :style="{ width: `${cpuPeak}%` }"></i></div><div class="core-item"><span>STREAMS</span><b>{{ online }}<small>users</small></b><i :style="{ width: `${Math.min(100, online)}%` }"></i></div></div>
             <div class="gauges"><VChart class="gauge-chart" :option="cpuGauge" autoresize/><VChart class="gauge-chart" :option="peakGauge" autoresize/></div>
             <div class="trend-block"><div class="chart-caption"><span>负载动态曲线</span><div class="legend-dot"><i></i>综合 <i class="peak"></i>峰值</div></div><VChart class="cpu-chart" :option="cpuOption" autoresize/></div>
           </div>
@@ -173,14 +145,14 @@ onUnmounted(() => { if (mockTimer) clearInterval(mockTimer); if (clockTimer) cle
 
         <BorderBox12 class="tech-panel memory-panel"><div class="panel-body">
           <div class="panel-title"><div><span class="section-index">04</span><h2>内存使用率</h2></div><span class="source-label">MEMORY</span></div>
-          <div class="memory-content"><div class="water-wrap"><WaterLevelPond :config="waterConfig"/></div><div class="memory-details"><div><span>已用 / 总容量</span><b>{{ memoryUsed.toFixed(1) }} <small>/ 64.0 GB</small></b></div><div><span>可用内存</span><b>{{ (64 - memoryUsed).toFixed(1) }} <small>GB</small></b></div><div class="memory-meter"><i :style="{ width: `${memory}%` }"></i></div></div><VChart class="memory-chart" :option="memoryOption" autoresize/></div>
+          <div class="memory-content"><div class="water-wrap"><WaterLevelPond :config="waterConfig"/></div><div class="memory-details"><div><span>已用 / 总容量</span><b>{{ memoryUsed.toFixed(1) }} <small>/ {{ memoryTotal.toFixed(1) }} GB</small></b></div><div><span>可用内存</span><b>{{ Math.max(0, memoryTotal - memoryUsed).toFixed(1) }} <small>GB</small></b></div><div class="memory-meter"><i :style="{ width: `${memory}%` }"></i></div></div><VChart class="memory-chart" :option="memoryOption" autoresize/></div>
         </div></BorderBox12>
 
         <BorderBox12 class="tech-panel node-panel"><div class="panel-body node-body"><div class="panel-title"><div><span class="section-index">05</span><h2>节点状态 / 流量负载</h2></div><span class="source-label">3 / 3 ONLINE</span></div><div class="node-flow"><div v-for="node in ['gateway-01', 'gateway-02', 'gateway-03']" :key="node" class="node"><span class="node-led"></span><b>{{ node }}</b><small>HEALTHY</small><i></i></div><div class="flow-line"><span></span><span></span><span></span></div><div class="flow-summary"><b>1.28 <small>Gbps</small></b><span>总入口流量</span></div></div></div></BorderBox12>
       </section>
 
       <aside class="right-column">
-        <BorderBox12 class="tech-panel history-panel"><div class="panel-body"><div class="panel-title"><div><span class="section-index">06</span><h2>今日历史并发趋势</h2></div><span class="source-label">24 HOURS</span></div><div class="history-stat"><span>今日峰值</span><b>{{ Math.max(...todayHistory) }}</b><small>13:00 - 14:00</small></div><VChart class="history-chart" :option="historyOption" autoresize/></div></BorderBox12>
+        <BorderBox12 class="tech-panel history-panel"><div class="panel-body"><div class="panel-title"><div><span class="section-index">06</span><h2>今日历史并发趋势</h2></div><span class="source-label">24 HOURS</span></div><div class="history-stat"><span>采样峰值</span><b>{{ todayHistory.length ? Math.max(...todayHistory) : 0 }}</b><small>进程启动以来采样</small></div><VChart class="history-chart" :option="historyOption" autoresize/></div></BorderBox12>
         <BorderBox12 class="tech-panel log-panel"><div class="panel-body"><div class="panel-title"><div><span class="section-index">07</span><h2>系统警告与实时日志流</h2></div><span class="log-live">STREAMING</span></div><div class="log-filter"><button v-for="level in ['ALL', 'INFO', 'WARN', 'ERROR'] as const" :key="level" :class="{ active: selectedLevel === level, [level.toLowerCase()]: true }" type="button" @click="selectedLevel = level">{{ level }}</button></div><div class="log-list"><article v-for="log in filteredLogs" :key="`${log.time}-${log.message}`" :class="['log-line', log.level.toLowerCase()]"><time>{{ log.time }}</time><b>{{ log.level }}</b><span>{{ log.message }}</span></article></div></div></BorderBox12>
       </aside>
     </section>
