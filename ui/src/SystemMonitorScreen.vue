@@ -7,7 +7,7 @@ import { LineChart, GaugeChart, PieChart } from 'echarts/charts'
 import { GridComponent, LegendComponent, TooltipComponent } from 'echarts/components'
 import { CanvasRenderer } from 'echarts/renderers'
 import { BorderBox12, DigitalFlop, WaterLevelPond } from '@kjgl77/datav-vue3'
-import { adminApi, type MonitorSnapshot } from './api'
+import { readStoredSession, type MonitorSnapshot } from './api'
 
 // 页面级注册，避免改变现有控制台对 ECharts 的使用方式。
 echarts.use([LineChart, GaugeChart, PieChart, GridComponent, LegendComponent, TooltipComponent, CanvasRenderer])
@@ -39,8 +39,11 @@ const memoryHistory = ref<number[]>([])
 const todayHistory = ref<number[]>([])
 const users = ref<MonitorUser[]>([])
 const logs = ref<MonitorLog[]>([])
-let pollTimer: ReturnType<typeof setInterval> | undefined
+let socket: WebSocket | undefined
+let reconnectTimer: ReturnType<typeof setTimeout> | undefined
 let clockTimer: ReturnType<typeof setInterval> | undefined
+let reconnectDelay = 1000
+let disposed = false
 
 const uptime = computed(() => {
   const days = Math.floor(uptimeSeconds.value / 86400)
@@ -107,19 +110,29 @@ function applySnapshot(snapshot: MonitorSnapshot) {
   cpuHistory.value = [...cpuHistory.value.slice(-59), snapshot.cpu]
   memoryHistory.value = [...memoryHistory.value.slice(-59), snapshot.memory]
 }
-async function loadSnapshot() {
-  try { applySnapshot((await adminApi.monitorSnapshot()).data) }
-  catch { logs.value = [{ time: '--:--:--', level: 'ERROR', message: '无法读取实时监控数据，请确认管理员登录状态与后端服务。' }] }
+function connectMonitorSocket() {
+  const token = readStoredSession()?.token
+  if (!token) { logs.value = [{ time: '--:--:--', level: 'ERROR', message: '未找到管理员登录凭据，无法建立实时监控连接。' }]; return }
+  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+  socket = new WebSocket(`${protocol}//${window.location.host}/api/admin/monitor/ws?token=${encodeURIComponent(token)}`)
+  socket.onopen = () => { reconnectDelay = 1000 }
+  socket.onmessage = event => { try { applySnapshot(JSON.parse(String(event.data)) as MonitorSnapshot) } catch { /* Ignore malformed monitoring frames. */ } }
+  socket.onclose = () => {
+    socket = undefined
+    if (disposed) return
+    reconnectTimer = setTimeout(connectMonitorSocket, reconnectDelay)
+    reconnectDelay = Math.min(reconnectDelay * 2, 15_000)
+  }
+  socket.onerror = () => socket?.close()
 }
 function leaveScreen() { emit('back') }
 
 onMounted(() => {
   autofit.init({ el: `#${rootId}`, dw: 1920, dh: 1080, resize: true, transition: 0, allowScroll: false })
   clockTimer = setInterval(() => { now.value = new Date() }, 1000)
-  loadSnapshot()
-  pollTimer = setInterval(loadSnapshot, 1000)
+  connectMonitorSocket()
 })
-onUnmounted(() => { if (pollTimer) clearInterval(pollTimer); if (clockTimer) clearInterval(clockTimer); autofit.off() })
+onUnmounted(() => { disposed = true; if (reconnectTimer) clearTimeout(reconnectTimer); socket?.close(); if (clockTimer) clearInterval(clockTimer); autofit.off() })
 </script>
 
 <template>
