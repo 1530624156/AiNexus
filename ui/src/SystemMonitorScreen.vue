@@ -7,7 +7,7 @@ import { LineChart, GaugeChart, PieChart } from 'echarts/charts'
 import { GridComponent, LegendComponent, TooltipComponent } from 'echarts/components'
 import { CanvasRenderer } from 'echarts/renderers'
 import { BorderBox12, DigitalFlop, WaterLevelPond } from '@kjgl77/datav-vue3'
-import { readStoredSession, type MonitorSnapshot } from './api'
+import { adminApi, readStoredSession, type MonitorSnapshot } from './api'
 
 // 页面级注册，避免改变现有控制台对 ECharts 的使用方式。
 echarts.use([LineChart, GaugeChart, PieChart, GridComponent, LegendComponent, TooltipComponent, CanvasRenderer])
@@ -32,6 +32,7 @@ const maxConcurrent = ref(0)
 const queueCapacity = ref(0)
 const uptimeSeconds = ref(0)
 const selectedLevel = ref<'ALL' | MonitorLog['level']>('ALL')
+const connectionState = ref<'connecting' | 'live' | 'reconnecting' | 'error'>('connecting')
 const labels = ref<string[]>([])
 const concurrencyHistory = ref<number[]>([])
 const cpuHistory = ref<number[]>([])
@@ -110,26 +111,33 @@ function applySnapshot(snapshot: MonitorSnapshot) {
   cpuHistory.value = [...cpuHistory.value.slice(-59), snapshot.cpu]
   memoryHistory.value = [...memoryHistory.value.slice(-59), snapshot.memory]
 }
+async function loadInitialSnapshot() {
+  try { applySnapshot((await adminApi.monitorSnapshot()).data) }
+  catch { connectionState.value = 'error'; logs.value = [{ time: '--:--:--', level: 'ERROR', message: '无法读取监控初始快照，请确认管理员登录状态与后端服务。' }] }
+}
 function connectMonitorSocket() {
   const token = readStoredSession()?.token
-  if (!token) { logs.value = [{ time: '--:--:--', level: 'ERROR', message: '未找到管理员登录凭据，无法建立实时监控连接。' }]; return }
+  if (!token) { connectionState.value = 'error'; logs.value = [{ time: '--:--:--', level: 'ERROR', message: '未找到管理员登录凭据，无法建立实时监控连接。' }]; return }
+  connectionState.value = reconnectDelay > 1000 ? 'reconnecting' : 'connecting'
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
   socket = new WebSocket(`${protocol}//${window.location.host}/api/admin/monitor/ws`, token)
-  socket.onopen = () => { reconnectDelay = 1000 }
-  socket.onmessage = event => { try { applySnapshot(JSON.parse(String(event.data)) as MonitorSnapshot) } catch { /* Ignore malformed monitoring frames. */ } }
+  socket.onopen = () => { reconnectDelay = 1000; connectionState.value = 'live' }
+  socket.onmessage = event => { try { applySnapshot(JSON.parse(String(event.data)) as MonitorSnapshot) } catch { connectionState.value = 'error' } }
   socket.onclose = () => {
     socket = undefined
     if (disposed) return
+    connectionState.value = 'reconnecting'
     reconnectTimer = setTimeout(connectMonitorSocket, reconnectDelay)
     reconnectDelay = Math.min(reconnectDelay * 2, 15_000)
   }
-  socket.onerror = () => socket?.close()
+  socket.onerror = () => { connectionState.value = 'error'; socket?.close() }
 }
 function leaveScreen() { emit('back') }
 
 onMounted(() => {
   autofit.init({ el: `#${rootId}`, dw: 1920, dh: 1080, resize: true, transition: 0, allowScroll: false })
   clockTimer = setInterval(() => { now.value = new Date() }, 1000)
+  loadInitialSnapshot()
   connectMonitorSocket()
 })
 onUnmounted(() => { disposed = true; if (reconnectTimer) clearTimeout(reconnectTimer); socket?.close(); if (clockTimer) clearInterval(clockTimer); autofit.off() })
@@ -138,7 +146,7 @@ onUnmounted(() => { disposed = true; if (reconnectTimer) clearTimeout(reconnectT
 <template>
   <main :id="rootId" class="monitor-screen">
     <header class="monitor-header">
-      <div class="header-side"><span class="header-kicker">SYSTEM UPTIME</span><b>{{ uptime }}</b><i class="pulse-dot"></i></div>
+      <div class="header-side"><span class="header-kicker">SYSTEM UPTIME</span><b>{{ uptime }}</b><i :class="['pulse-dot', connectionState]"></i><small class="connection-state">{{ connectionState === 'live' ? 'WS LIVE' : connectionState === 'reconnecting' ? '重连中' : connectionState === 'connecting' ? '连接中' : '连接失败' }}</small></div>
       <div class="header-title"><span class="title-line"></span><h1>实时系统运行监控中心</h1><small>AI NEXUS · REALTIME OPERATIONS COMMAND</small><span class="title-line reverse"></span></div>
       <div class="header-side align-right"><span>{{ dateText }}</span><b class="clock">{{ timeText }}</b><button type="button" class="exit-button" @click="leaveScreen">返回原系统 <span>↗</span></button></div>
     </header>
@@ -188,7 +196,7 @@ onUnmounted(() => { disposed = true; if (reconnectTimer) clearTimeout(reconnectT
 .monitor-screen { width: 1920px; height: 1080px; overflow: hidden; color: #d9f5ff; background: #061525; font-family: "Microsoft YaHei", "PingFang SC", sans-serif; letter-spacing: 0; position: relative; isolation: isolate; }
 .monitor-screen::before { content: ""; position: absolute; inset: 0; pointer-events: none; opacity: .7; background-image: linear-gradient(rgba(44, 141, 186, .075) 1px, transparent 1px), linear-gradient(90deg, rgba(44, 141, 186, .065) 1px, transparent 1px), radial-gradient(ellipse at 50% 100%, rgba(0, 114, 159, .2), transparent 52%); background-size: 48px 48px, 48px 48px, auto; z-index: -1; }
 .monitor-header { height: 112px; padding: 18px 44px 0; box-sizing: border-box; display: grid; grid-template-columns: 1fr 1.35fr 1fr; align-items: start; border-bottom: 1px solid rgba(57, 147, 193, .38); }
-.header-side { color: #83b8cf; font-size: 14px; display: flex; align-items: center; gap: 12px; padding-top: 15px; }.header-side b { color: #e5fbff; font-size: 18px; font-family: Consolas, monospace; }.header-side.align-right { justify-content: flex-end; gap: 16px; }.header-side .clock { font-size: 24px; letter-spacing: 2px; }.header-kicker { color: #5b92ac; font-family: Consolas, monospace; font-size: 11px; }.pulse-dot { width: 8px; height: 8px; border-radius: 50%; background: #2de4a7; box-shadow: 0 0 12px #2de4a7; animation: pulse 1.6s infinite; }
+.header-side { color: #83b8cf; font-size: 14px; display: flex; align-items: center; gap: 12px; padding-top: 15px; }.header-side b { color: #e5fbff; font-size: 18px; font-family: Consolas, monospace; }.header-side.align-right { justify-content: flex-end; gap: 16px; }.header-side .clock { font-size: 24px; letter-spacing: 2px; }.header-kicker { color: #5b92ac; font-family: Consolas, monospace; font-size: 11px; }.pulse-dot { width: 8px; height: 8px; border-radius: 50%; background: #2de4a7; box-shadow: 0 0 12px #2de4a7; animation: pulse 1.6s infinite; }.pulse-dot.connecting, .pulse-dot.reconnecting { background: #f4bd4f; box-shadow: 0 0 12px #f4bd4f; }.pulse-dot.error { background: #ff7180; box-shadow: 0 0 12px #ff7180; animation: none; }.connection-state { color: #73abc2; font: 10px Consolas, monospace; }
 .header-title { display: flex; align-items: center; justify-content: center; gap: 13px; flex-wrap: wrap; }.header-title h1 { width: 100%; order: -1; margin: 0; text-align: center; color: #effcff; font-size: 32px; font-weight: 700; text-shadow: 0 0 18px rgba(34, 202, 249, .45); }.header-title small { color: #4ca3c6; font-family: Consolas, monospace; font-size: 10px; letter-spacing: 2px; }.title-line { width: 88px; height: 1px; background: linear-gradient(90deg, transparent, #35c7e8); }.title-line.reverse { background: linear-gradient(90deg, #35c7e8, transparent); }.exit-button { margin-left: 4px; color: #bdefff; border: 1px solid #2b91bd; background: rgba(19, 93, 126, .18); height: 30px; padding: 0 11px; font: inherit; cursor: pointer; }.exit-button:hover { background: rgba(31, 145, 188, .32); }.exit-button span { color: #44d7ef; font-size: 16px; }
 .monitor-grid { box-sizing: border-box; padding: 18px 28px 25px; height: 968px; display: grid; grid-template-columns: 28% 44% 28%; gap: 14px; }.left-column, .right-column, .center-column { min-width: 0; display: grid; gap: 14px; }.left-column { grid-template-rows: 60% calc(40% - 14px); }.center-column { grid-template-rows: 45% 28% calc(27% - 28px); }.right-column { grid-template-rows: 45% calc(55% - 14px); }.tech-panel { min-height: 0; background: rgba(6, 25, 43, .64); }.panel-body { height: 100%; box-sizing: border-box; padding: 20px 26px 18px; }.panel-title { display: flex; justify-content: space-between; align-items: center; height: 29px; border-bottom: 1px solid rgba(51, 132, 166, .34); padding-bottom: 11px; }.panel-title > div { display: flex; align-items: center; gap: 9px; }.panel-title h2 { margin: 0; color: #e0f6ff; font-size: 17px; font-weight: 600; }.section-index { color: #20d2f0; font-family: Consolas, monospace; font-weight: bold; font-size: 12px; }.source-label, .frequency-label { color: #5facc7; font-family: Consolas, monospace; font-size: 10px; letter-spacing: 1px; }.online-total { display: flex; align-items: baseline; gap: 7px; }.online-total span { font-family: Consolas, monospace; color: #6da4bb; font-size: 10px; }.online-total b { font: bold 25px Consolas, monospace; color: #24d8f2; }
 .user-table-head, .user-row { display: grid; grid-template-columns: 1.12fr 1.18fr 1.13fr .62fr; align-items: center; column-gap: 7px; }.user-table-head { margin: 13px 0 4px; color: #6397ae; font-size: 11px; }.user-row { height: 47px; border-bottom: 1px solid rgba(46, 113, 144, .22); font: 12px Consolas, monospace; color: #94c6d9; }.user-name { color: #d5f5ff; }.status-dot { color: #7a9bad; font-family: "Microsoft YaHei", sans-serif; }.status-dot::before { content: ""; width: 5px; height: 5px; display: inline-block; margin-right: 5px; border-radius: 50%; background: #5d7480; }.status-dot.is-active { color: #60e4b6; }.status-dot.is-active::before { background: #30dda7; box-shadow: 0 0 7px #30dda7; }.table-foot { display: flex; align-items: center; justify-content: center; gap: 7px; padding-top: 12px; color: #54869d; font-size: 10px; }.table-foot i { height: 1px; width: 42px; background: #255d75; }
