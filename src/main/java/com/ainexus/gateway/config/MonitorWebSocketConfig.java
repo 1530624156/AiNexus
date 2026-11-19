@@ -12,7 +12,6 @@ import org.springframework.web.socket.config.annotation.WebSocketConfigurer;
 import org.springframework.web.socket.config.annotation.WebSocketHandlerRegistry;
 import org.springframework.web.socket.server.HandshakeInterceptor;
 
-import java.net.URI;
 import java.util.Map;
 
 /** WebSocket registration and administrator session verification for monitor delivery. */
@@ -33,7 +32,7 @@ public class MonitorWebSocketConfig implements WebSocketConfigurer {
     private record AdminMonitorHandshakeInterceptor(ConsoleSessionService sessionService) implements HandshakeInterceptor {
         @Override
         public boolean beforeHandshake(ServerHttpRequest request, ServerHttpResponse response, WebSocketHandler wsHandler, Map<String, Object> attributes) {
-            String token = queryParameter(request.getURI(), "token");
+            String token = request.getHeaders().getFirst("Sec-WebSocket-Protocol");
             ConsoleSessionService.SessionAccount account = token == null ? null : sessionService.verify(token);
             if (account == null || !"ADMIN".equals(account.role())) {
                 response.setStatusCode(org.springframework.http.HttpStatus.UNAUTHORIZED);
@@ -45,15 +44,5 @@ public class MonitorWebSocketConfig implements WebSocketConfigurer {
 
         @Override
         public void afterHandshake(ServerHttpRequest request, ServerHttpResponse response, WebSocketHandler wsHandler, Exception exception) { }
-
-        private String queryParameter(URI uri, String name) {
-            String query = uri.getRawQuery();
-            if (query == null) return null;
-            for (String pair : query.split("&")) {
-                int separator = pair.indexOf('=');
-                if (separator > 0 && name.equals(pair.substring(0, separator))) return java.net.URLDecoder.decode(pair.substring(separator + 1), java.nio.charset.StandardCharsets.UTF_8);
-            }
-            return null;
-        }
     }
 }

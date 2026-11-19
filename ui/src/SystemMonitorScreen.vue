@@ -114,7 +114,7 @@ function connectMonitorSocket() {
   const token = readStoredSession()?.token
   if (!token) { logs.value = [{ time: '--:--:--', level: 'ERROR', message: '未找到管理员登录凭据，无法建立实时监控连接。' }]; return }
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-  socket = new WebSocket(`${protocol}//${window.location.host}/api/admin/monitor/ws?token=${encodeURIComponent(token)}`)
+  socket = new WebSocket(`${protocol}//${window.location.host}/api/admin/monitor/ws`, token)
   socket.onopen = () => { reconnectDelay = 1000 }
   socket.onmessage = event => { try { applySnapshot(JSON.parse(String(event.data)) as MonitorSnapshot) } catch { /* Ignore malformed monitoring frames. */ } }
   socket.onclose = () => {
