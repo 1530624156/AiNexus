@@ -35,8 +35,8 @@ public class MonitorWebSocketConfig implements WebSocketConfigurer {
     private record AdminMonitorHandshakeInterceptor(ConsoleSessionService sessionService) implements HandshakeInterceptor {
         @Override
         public boolean beforeHandshake(ServerHttpRequest request, ServerHttpResponse response, WebSocketHandler wsHandler, Map<String, Object> attributes) {
-            String token = request.getHeaders().getFirst("Sec-WebSocket-Protocol");
-            if (token == null || token.isBlank()) token = queryParameter(request.getURI(), "token");
+            // Browser WebSocket APIs cannot set Authorization. Use the short-lived signed console session from the query string.
+            String token = queryParameter(request.getURI(), "token");
             ConsoleSessionService.SessionAccount account = token == null ? null : sessionService.verify(token);
             if (account == null || !"ADMIN".equals(account.role())) {
                 response.setStatusCode(org.springframework.http.HttpStatus.UNAUTHORIZED);

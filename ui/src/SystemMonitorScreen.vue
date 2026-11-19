@@ -120,17 +120,20 @@ function connectMonitorSocket() {
   if (!token) { connectionState.value = 'error'; logs.value = [{ time: '--:--:--', level: 'ERROR', message: '未找到管理员登录凭据，无法建立实时监控连接。' }]; return }
   connectionState.value = reconnectDelay > 1000 ? 'reconnecting' : 'connecting'
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-  socket = new WebSocket(`${protocol}//${window.location.host}/api/admin/monitor/ws`, token)
+  // Native WebSocket cannot attach Authorization headers; use the server's handshake token fallback.
+  socket = new WebSocket(`${protocol}//${window.location.host}/api/admin/monitor/ws?token=${encodeURIComponent(token)}`)
   socket.onopen = () => { reconnectDelay = 1000; connectionState.value = 'live' }
   socket.onmessage = event => { try { applySnapshot(JSON.parse(String(event.data)) as MonitorSnapshot) } catch { connectionState.value = 'error' } }
-  socket.onclose = () => {
+  socket.onclose = event => {
     socket = undefined
     if (disposed) return
     connectionState.value = 'reconnecting'
+    const disconnectLog: MonitorLog = { time: new Date().toLocaleTimeString('zh-CN', { hourCycle: 'h23' }), level: 'WARN', message: `监控 WebSocket 已关闭（${event.code}${event.reason ? `：${event.reason}` : ''}），正在重连。` }
+    logs.value = [disconnectLog, ...logs.value].slice(0, 18)
     reconnectTimer = setTimeout(connectMonitorSocket, reconnectDelay)
     reconnectDelay = Math.min(reconnectDelay * 2, 15_000)
   }
-  socket.onerror = () => { connectionState.value = 'error'; socket?.close() }
+  socket.onerror = () => { connectionState.value = 'error' }
 }
 function leaveScreen() { emit('back') }
 
