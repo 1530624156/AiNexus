@@ -23,6 +23,7 @@ public class UserGroupTokenQuotaService {
     private final UserGroupMapper groupMapper;
     private final RequestAuditLogMapper auditMapper;
     private final GatewayRuntimeSettingsService settingsService;
+    private final com.fasterxml.jackson.databind.ObjectMapper objectMapper;
 
     public void check(Long accountId) {
         if (accountId == null || settingsService.get().crazyModeEnabled()) return;
@@ -36,11 +37,26 @@ public class UserGroupTokenQuotaService {
                 throw BizException.tokenQuotaExceeded("User group member token quota exhausted: " + group.getName());
             }
 
-            long groupQuota = group.getTokenQuota() == null ? 0 : group.getTokenQuota();
+            long groupQuota = effectiveGroupQuota(group, LocalDateTime.now());
             if (groupQuota > 0 && usedByGroup(group.getId(), start) >= groupQuota) {
                 throw BizException.tokenQuotaExceeded("User group token quota exhausted: " + group.getName());
             }
         }
+    }
+
+    public long effectiveGroupQuota(UserGroup group, LocalDateTime now) {
+        long quota = group.getTokenQuota() == null ? 0 : group.getTokenQuota();
+        if (quota == 0 || !"DAY".equals(group.getQuotaPeriod()) || group.getQuotaSchedule() == null || group.getQuotaSchedule().isBlank()) return quota;
+        try {
+            com.fasterxml.jackson.databind.JsonNode slots = objectMapper.readTree(group.getQuotaSchedule());
+            for (com.fasterxml.jackson.databind.JsonNode slot : slots) {
+                java.time.LocalTime time = java.time.LocalTime.parse(slot.path("time").asText());
+                long amount = slot.path("amount").asLong();
+                if (amount < 0) continue;
+                if (!now.toLocalTime().isBefore(time)) quota = Math.addExact(quota, amount);
+            }
+        } catch (Exception ignored) { }
+        return quota;
     }
 
     public long usedByAccount(Long accountId, LocalDateTime periodStart) {

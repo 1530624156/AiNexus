@@ -20,6 +20,8 @@ public class UserGroup {
     private Integer apiKeyMaxConcurrent;
     private Long tokenQuota;
     private String quotaPeriod;
+    /** JSON array of daily token quota increments, activated at their HH:mm time. */
+    private String quotaSchedule;
     private Long memberTokenQuota;
     private Integer memberMaxConcurrent;
     /** Allowed call window start, HH:mm; both null/blank means the group is callable all day. */
