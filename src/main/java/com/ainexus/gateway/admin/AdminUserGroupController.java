@@ -164,7 +164,7 @@ public class AdminUserGroupController {
         long usedPromptTokens = effectiveQuota == 0 ? 0L : tokenQuotaService.usedByGroup(group.getId(), tokenQuotaService.periodStart(group.getQuotaPeriod()));
         Long remainingTokenQuota = effectiveQuota == 0 ? null
                 : Math.max(0L, effectiveQuota - usedPromptTokens);
-        return new UserGroupView(group.getId(), group.getName(), group.getMaxConcurrent(), group.getApiKeyMaxConcurrent(), effectiveQuota, group.getQuotaPeriod(), parseQuotaSchedule(group.getQuotaSchedule()), group.getMemberTokenQuota(), group.getMemberMaxConcurrent(), group.getAllowTimeStart(), group.getAllowTimeEnd(), group.getRemark(), memberIds, memberIds.stream().map(members::get).filter(java.util.Objects::nonNull).toList(), modelGroupIds, modelGroupIds.stream().map(modelGroups::get).filter(java.util.Objects::nonNull).toList(), usedPromptTokens, remainingTokenQuota, group.getCreateTime(), group.getUpdateTime());
+        return new UserGroupView(group.getId(), group.getName(), group.getMaxConcurrent(), group.getApiKeyMaxConcurrent(), group.getTokenQuota(), effectiveQuota, group.getQuotaPeriod(), parseQuotaSchedule(group.getQuotaSchedule()), group.getMemberTokenQuota(), group.getMemberMaxConcurrent(), group.getAllowTimeStart(), group.getAllowTimeEnd(), group.getRemark(), memberIds, memberIds.stream().map(members::get).filter(java.util.Objects::nonNull).toList(), modelGroupIds, modelGroupIds.stream().map(modelGroups::get).filter(java.util.Objects::nonNull).toList(), usedPromptTokens, remainingTokenQuota, group.getCreateTime(), group.getUpdateTime());
     }
 
     private List<QuotaSlotRequest> parseQuotaSchedule(String value) {
@@ -174,6 +174,6 @@ public class AdminUserGroupController {
     }
     public record QuotaSlotRequest(String time, Long amount) { }
     public record UserGroupRequest(@NotBlank String name, Integer maxConcurrent, Integer apiKeyMaxConcurrent, Long tokenQuota, String quotaPeriod, List<QuotaSlotRequest> quotaSchedule, Long memberTokenQuota, Integer memberMaxConcurrent, String allowTimeStart, String allowTimeEnd, String remark, List<Long> memberIds, List<Long> modelGroupIds) { }
-    public record UserGroupView(Long id, String name, Integer maxConcurrent, Integer apiKeyMaxConcurrent, Long tokenQuota, String quotaPeriod, List<QuotaSlotRequest> quotaSchedule, Long memberTokenQuota, Integer memberMaxConcurrent, String allowTimeStart, String allowTimeEnd, String remark, List<Long> memberIds, List<String> memberNames, List<Long> modelGroupIds, List<String> modelGroupNames, Long usedPromptTokens, Long remainingTokenQuota, Object createTime, Object updateTime) { }
+    public record UserGroupView(Long id, String name, Integer maxConcurrent, Integer apiKeyMaxConcurrent, Long tokenQuota, Long effectiveTokenQuota, String quotaPeriod, List<QuotaSlotRequest> quotaSchedule, Long memberTokenQuota, Integer memberMaxConcurrent, String allowTimeStart, String allowTimeEnd, String remark, List<Long> memberIds, List<String> memberNames, List<Long> modelGroupIds, List<String> modelGroupNames, Long usedPromptTokens, Long remainingTokenQuota, Object createTime, Object updateTime) { }
     public record OptionView(Long id, String name) { }
 }
