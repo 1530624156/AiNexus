@@ -92,7 +92,7 @@ api.interceptors.response.use(undefined, async (error: AxiosError) => {
   }
 })
 
-export type Quota = { userGroup: string; period: string; personalQuota?: number | null; personalUsed: number; personalRemaining?: number | null; groupQuota?: number | null; groupUsed: number; groupRemaining?: number | null }
+export type Quota = { userGroup: string; period: string; personalQuota?: number | null; personalUsed: number; personalRemaining?: number | null; dailyTotalGroupQuota?: number | null; effectiveGroupQuota?: number | null; groupUsed: number; groupRemaining?: number | null; nextQuotaActivationTime?: string | null }
 export type Account = { id: number; username: string; email: string; remark?: string | null; status: number; quotas: Quota[]; createTime?: string }
 export type UserProfile = { username: string; email: string }
 export type ModelBinding = { id?: number; modelName: string; upstreamModelName?: string | null; status?: number; remark?: string | null }
@@ -120,7 +120,7 @@ export type MonitorSnapshot = { online: number; streamingRequests: number; concu
 export type ModelGroup = { id: number; name: string; models: string[]; remark?: string | null; createTime?: string; updateTime?: string }
 export type NamedOption = { id: number; name: string }
 export type QuotaSlot = { time: string; amount: number }
-export type UserGroup = { id: number; name: string; maxConcurrent: number; apiKeyMaxConcurrent: number; tokenQuota: number; effectiveTokenQuota: number; quotaPeriod: 'DAY' | 'WEEK' | 'MONTH' | 'YEAR'; quotaSchedule: QuotaSlot[]; memberTokenQuota: number; memberMaxConcurrent: number; allowTimeStart?: string | null; allowTimeEnd?: string | null; remark?: string | null; memberIds: number[]; memberNames: string[]; modelGroupIds: number[]; modelGroupNames: string[]; usedPromptTokens: number; remainingTokenQuota?: number | null; createTime?: string; updateTime?: string }
+export type UserGroup = { id: number; name: string; maxConcurrent: number; apiKeyMaxConcurrent: number; tokenQuota: number; effectiveTokenQuota: number; dailyTotalTokenQuota: number; nextWindowStart?: string | null; quotaPeriod: 'DAY' | 'WEEK' | 'MONTH' | 'YEAR'; quotaSchedule: QuotaSlot[]; memberTokenQuota: number; memberMaxConcurrent: number; allowTimeStart?: string | null; allowTimeEnd?: string | null; remark?: string | null; memberIds: number[]; memberNames: string[]; modelGroupIds: number[]; modelGroupNames: string[]; usedPromptTokens: number; remainingTokenQuota?: number | null; createTime?: string; updateTime?: string }
 export type EpaySettings = { enabled: boolean; gatewayUrl?: string | null; merchantId?: string | null; merchantKey?: string | null; notifyUrl?: string | null; returnUrl?: string | null; defaultPaymentType?: string | null; signType?: string | null }
 export type MailSettings = { enabled: boolean; host?: string | null; port?: number | null; username?: string | null; password?: string | null; fromAddress?: string | null; fromName?: string | null; startTlsEnabled: boolean; sslEnabled: boolean }
 export type SponsorshipOrder = { outTradeNo: string; sponsorName: string; amount: number; currency: string; paymentType?: string | null; status: 'PENDING' | 'PAID' | 'CLOSED'; tradeNo?: string | null; paidAt?: string | null; createTime?: string | null }

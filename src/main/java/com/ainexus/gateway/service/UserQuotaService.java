@@ -30,20 +30,21 @@ public class UserQuotaService {
     private Quota quota(Long accountId, UserGroup group) {
         LocalDateTime start = groupTokenQuotaService.periodStart(group.getQuotaPeriod());
         if (settingsService.get().crazyModeEnabled()) {
-            return new Quota(group.getName(), group.getQuotaPeriod(), null, 0, null, null, 0, null);
+            return new Quota(group.getName(), group.getQuotaPeriod(), null, 0, null, null, null, 0, null, null);
         }
         long personalUsed = groupTokenQuotaService.usedByAccount(accountId, start);
         long personalQuota = group.getMemberTokenQuota() == null ? 0 : group.getMemberTokenQuota();
-        long groupQuota = group.getTokenQuota() == null ? 0 : group.getTokenQuota();
-        long groupUsed = groupQuota == 0 ? 0 : groupTokenQuotaService.usedByGroup(group.getId(), start);
+        UserGroupTokenQuotaService.GroupQuotaSnapshot snapshot = groupTokenQuotaService.quotaSnapshot(group, LocalDateTime.now());
+        long groupUsed = snapshot.effectiveQuota() == 0 ? 0 : groupTokenQuotaService.usedByGroup(group.getId(), start);
         return new Quota(group.getName(), group.getQuotaPeriod(),
                 limit(personalQuota), personalUsed, remaining(personalQuota, personalUsed),
-                limit(groupQuota), groupUsed, remaining(groupQuota, groupUsed));
+                limit(snapshot.dailyTotalQuota()), limit(snapshot.effectiveQuota()), groupUsed,
+                remaining(snapshot.effectiveQuota(), groupUsed), snapshot.nextWindowStart() == null ? null : snapshot.nextWindowStart().toString());
     }
 
     private Long limit(long value) { return value == 0 ? null : value; }
     private Long remaining(long quota, long used) { return quota == 0 ? null : Math.max(0, quota - used); }
     public record Quota(String userGroup, String period,
                         Long personalQuota, long personalUsed, Long personalRemaining,
-                        Long groupQuota, long groupUsed, Long groupRemaining) { }
+                        Long dailyTotalGroupQuota, Long effectiveGroupQuota, long groupUsed, Long groupRemaining, String nextQuotaActivationTime) { }
 }
