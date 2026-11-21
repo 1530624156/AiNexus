@@ -92,7 +92,7 @@ api.interceptors.response.use(undefined, async (error: AxiosError) => {
   }
 })
 
-export type Quota = { userGroup: string; period: string; personalQuota?: number | null; personalUsed: number; personalRemaining?: number | null; dailyTotalGroupQuota?: number | null; effectiveGroupQuota?: number | null; groupUsed: number; groupRemaining?: number | null; nextQuotaActivationTime?: string | null }
+export type Quota = { userGroup: string; period: string; personalQuota?: number | null; personalUsed: number; personalRemaining?: number | null; dailyTotalGroupQuota?: number | null; effectiveGroupQuota?: number | null; groupQuota?: number | null; groupUsed: number; groupRemaining?: number | null; nextQuotaActivationTime?: string | null }
 export type Account = { id: number; username: string; email: string; remark?: string | null; status: number; quotas: Quota[]; createTime?: string }
 export type UserProfile = { username: string; email: string }
 export type ModelBinding = { id?: number; modelName: string; upstreamModelName?: string | null; status?: number; remark?: string | null }
