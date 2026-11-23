@@ -112,6 +112,9 @@ const releaseNoteDialog = ref(false)
 const editingReleaseNote = ref<ReleaseNote | null>(null)
 const releaseNoteSaving = ref(false)
 const releaseNoteForm = reactive<ReleaseNoteInput>({ version: '', title: '', content: '', status: 'DRAFT' })
+const releaseNoticeDialog = ref(false)
+const latestReleaseNote = ref<ReleaseNote | null>(null)
+const RELEASE_NOTE_SEEN_KEY_PREFIX = 'ainexus.release-note.seen.'
 // 商业广告位: 公开配置用于登录页与用户端展示，管理员表单单独维护草稿，避免保存前影响已展示内容。
 // 展示层类名一律用 promo-*（不用 ad-*/-ad）：通用广告拦截规则会按 [class$="-ad"]、[class*="ad-"]
 // 等选择器做 cosmetic 屏蔽，用广告命名会让已售出的广告位对拦截器用户静默消失。
@@ -190,6 +193,7 @@ async function restoreSession() {
     applySession({ token: githubLoginToken, username: githubLoginUsername, role: githubLoginRole })
     ElMessage.success('GitHub 登录成功，授权凭据已刷新')
     await loadCurrent()
+    await checkLatestReleaseNote()
     return
   }
 
@@ -201,6 +205,7 @@ async function restoreSession() {
     const current = (await authApi.me()).data
     applySession({ token: readStoredSession()?.token ?? stored.token, username: current.username, role: current.role })
     await loadCurrent()
+    await checkLatestReleaseNote()
   } catch (error: any) {
     if (error?.response?.status === 401) logout()
   }
@@ -210,12 +215,31 @@ async function login() {
     loading.value = true
     applySession((await authApi.login(loginForm)).data)
     await loadCurrent()
+    await checkLatestReleaseNote()
   } catch (error: any) { ElMessage.error(error?.response?.data?.error?.message ?? '登录失败') } finally { loading.value = false }
 }
 async function loginWithGithub() {
   try { window.location.assign((await authApi.githubAuthorize()).data.authorizationUrl) }
   catch (error: any) { ElMessage.error(error?.response?.data?.error?.message ?? 'GitHub 登录尚未配置') }
 }
+function releaseNoteSeenKey(note: ReleaseNote) { return `${RELEASE_NOTE_SEEN_KEY_PREFIX}${session.value?.username ?? 'anonymous'}.${note.id}` }
+async function checkLatestReleaseNote() {
+  if (!session.value || session.value.role !== 'USER') return
+  try {
+    const notes = (await portalApi.releaseNotes()).data
+    const latest = notes[0]
+    if (!latest || localStorage.getItem(releaseNoteSeenKey(latest)) === '1') return
+    latestReleaseNote.value = latest
+    releaseNoticeDialog.value = true
+  } catch {
+    // A non-critical notification failure must not interrupt console access.
+  }
+}
+function confirmLatestReleaseNote() {
+  if (latestReleaseNote.value) localStorage.setItem(releaseNoteSeenKey(latestReleaseNote.value), '1')
+  releaseNoticeDialog.value = false
+}
+function openLatestReleaseNotes() { releaseNoticeDialog.value = false; userPage.value = 'release-notes'; loadCurrent() }
 function logout() { clearStoredSession(); session.value = null; loginForm.password = ''; }
 function onSessionExpired() { logout(); ElMessage.error('登录状态已失效，请重新登录') }
 function githubRepositoryUrl(repository?: string | null) { if (!repository) return ''; return repository.startsWith('http://') || repository.startsWith('https://') ? repository : `https://github.com/${repository.replace(/^\/+/, '')}` }
@@ -1068,6 +1092,12 @@ onBeforeUnmount(() => {
     <el-dialog v-model="keyDialog" title="创建 API Key" width="440px"><el-form label-position="top"><el-form-item label="备注"><el-input v-model="keyRemark" placeholder="例如：本地开发" /></el-form-item></el-form><template #footer><el-button @click="keyDialog=false">取消</el-button><el-button type="primary" @click="createKey">创建</el-button></template></el-dialog>
     <el-dialog v-model="keyRevealDialog" title="请立即保存 API Key" width="560px" :close-on-click-modal="false"><p class="token-warning">该明文仅显示一次。</p><div class="token-reveal"><code>{{revealedKey}}</code><el-button @click="copyKey">复制</el-button></div></el-dialog>
   </main>
+
+  <el-dialog v-model="releaseNoticeDialog" width="540px" class="release-notice-dialog" :close-on-click-modal="false" :close-on-press-escape="false" :show-close="false" append-to-body>
+    <template #header><div class="release-notice-heading"><span>NEW RELEASE</span><b>{{ latestReleaseNote?.version }}</b></div></template>
+    <template v-if="latestReleaseNote"><section class="release-notice-content"><h2>{{ latestReleaseNote.title }}</h2><time>发布于 {{ formatDateTime(latestReleaseNote.publishedAt) }}</time><p>{{ latestReleaseNote.content }}</p></section></template>
+    <template #footer><div class="release-notice-actions"><el-button link type="primary" @click="openLatestReleaseNotes">查看完整日志</el-button><el-button type="primary" @click="confirmLatestReleaseNote">我知道了</el-button></div></template>
+  </el-dialog>
 
   <el-dialog v-model="adContactDialog" title="商业合作联系" width="420px" append-to-body>
     <div class="promo-contact">
