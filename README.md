@@ -140,10 +140,10 @@ curl http://localhost:8080/v1/models \
    | protocol | 上游路径 | 鉴权 | 网关行为 |
    |---|---|---|---|
    | `openai-completions` | `/v1/chat/completions` | `Authorization: Bearer {apiKey}` | 原始 JSON/SSE 透明转发 |
-   | `openai-responses` | `/v1/responses` | `Authorization: Bearer {apiKey}` | Chat Completions 请求转为 Responses，非流式响应转回 Chat Completions |
+   | `openai-responses` | `/v1/responses` | `Authorization: Bearer {apiKey}` | Chat Completions 请求转为 Responses，非流式 JSON 和流式文本/函数调用 SSE 转回 Chat Completions |
    | `anthropic-messages` | `/v1/messages` | `x-api-key: {apiKey}` + `anthropic-version` | Chat Completions 请求转为 Anthropic Messages，非流式响应转回 Chat Completions |
 
-   当前 SSE 只支持 `openai-completions`；其它两种协议携带 `stream=true` 时会明确返回 `400 stream_not_supported_for_protocol`，不会返回错误格式的伪流。协议覆盖可放到 `protocol_config` JSON，例如 `{"requestPath":"/chat/completions","authHeader":"Authorization","authPrefix":"Bearer ","headers":{"X-Vendor":"value"}}`。
+   SSE 支持 `openai-completions` 透明透传和 `openai-responses` 文本/函数调用事件增量转换；`anthropic-messages` 携带 `stream=true` 时仍返回 `400 stream_not_supported_for_protocol`。渠道 Base URL 与默认路径直接拼接：若 Base URL 已包含 `/api/v1`，网关会自动去掉默认路径前重复的 `/v1`；自定义路径仍以 `protocol_config.requestPath` 为准。协议覆盖可放到 `protocol_config` JSON，例如 `{"requestPath":"/chat/completions","authHeader":"Authorization","authPrefix":"Bearer ","headers":{"X-Vendor":"value"}}`。
 5. 内部 Token 统一维护于 `gateway_token`。字段 `rate_limit_config` 可保存应用级限流 JSON（例如 `{"permitsPerSecond":20,"burst":40}`，当前作为配置预留）；写库后调用 `RouteCacheService.refresh()`，或等待最长 60 秒预热刷新。Redis 中仅保存 Token 的 SHA-256 摘要元数据，不保存 Token 原文。
 
 ## 4. 核心实现要点

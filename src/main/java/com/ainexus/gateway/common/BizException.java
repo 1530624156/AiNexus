@@ -65,6 +65,6 @@ public class BizException extends RuntimeException {
 
     public static BizException unsupportedProtocolStream(String protocol) {
         return new BizException(400, "invalid_request_error", "stream_not_supported_for_protocol",
-                "Streaming is currently supported only for protocol openai-completions; channel protocol is " + protocol);
+                "Streaming is currently supported only for protocols openai-completions and openai-responses; channel protocol is " + protocol);
     }
 }

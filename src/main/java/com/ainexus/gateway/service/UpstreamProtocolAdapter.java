@@ -18,7 +18,7 @@ import java.time.Instant;
  * OpenAI Chat Completions 客户端协议到各上游协议的最小适配层。
  *
  * <p>只在 route.protocol 不是 openai-completions 时重建 JSON；标准 OpenAI 渠道继续原始 byte[] 透传。
- * 目前 Responses / Anthropic Messages 支持非流式请求和统一的 Chat Completions 非流式响应。
+ * Responses 支持流式和非流式 Chat Completions 转换；Anthropic Messages 仅支持非流式。
  */
 @Component
 @RequiredArgsConstructor
@@ -31,7 +31,7 @@ public class UpstreamProtocolAdapter {
 
     public AdaptedRequest adaptRequest(byte[] openAiBody, boolean stream, ChannelRoute route) throws IOException {
         ChannelProtocol protocol = ChannelProtocol.parse(route.getProtocol());
-        if (stream && protocol != ChannelProtocol.OPENAI_COMPLETIONS) {
+        if (stream && protocol == ChannelProtocol.ANTHROPIC_MESSAGES) {
             throw BizException.unsupportedProtocolStream(protocol.value());
         }
         if (protocol == ChannelProtocol.OPENAI_COMPLETIONS) {
@@ -80,17 +80,51 @@ public class UpstreamProtocolAdapter {
         JsonNode messages = source.path("messages");
         if (messages.isArray()) {
             for (JsonNode message : messages) {
-                ObjectNode item = input.addObject();
-                item.put("role", message.path("role").asText("user"));
+                String role = message.path("role").asText("user");
+                if ("tool".equals(role)) {
+                    ObjectNode result = input.addObject();
+                    result.put("type", "function_call_output");
+                    result.put("call_id", message.path("tool_call_id").asText());
+                    result.put("output", message.path("content").asText(""));
+                    continue;
+                }
                 JsonNode content = message.path("content");
-                if (content.isTextual()) {
-                    item.put("content", content.asText());
-                } else if (!content.isMissingNode()) {
-                    item.set("content", content);
+                if (!content.isNull() && !content.isMissingNode()) {
+                    ObjectNode item = input.addObject();
+                    item.put("role", role);
+                    if (content.isTextual()) item.put("content", content.asText());
+                    else item.set("content", content);
+                }
+                for (JsonNode toolCall : message.path("tool_calls")) {
+                    ObjectNode call = input.addObject();
+                    call.put("type", "function_call");
+                    call.put("call_id", toolCall.path("id").asText());
+                    call.put("name", toolCall.path("function").path("name").asText());
+                    call.put("arguments", toolCall.path("function").path("arguments").asText("{}"));
                 }
             }
         }
-        copyIfPresent(source, target, "temperature", "top_p", "max_output_tokens", "max_tokens", "metadata");
+        copyIfPresent(source, target, "temperature", "top_p", "max_output_tokens", "metadata", "stream", "parallel_tool_calls");
+        JsonNode toolChoice = source.path("tool_choice");
+        if (toolChoice.isTextual()) target.set("tool_choice", toolChoice);
+        else if (toolChoice.isObject() && "function".equals(toolChoice.path("type").asText())) {
+            ObjectNode choice = target.putObject("tool_choice");
+            choice.put("type", "function");
+            choice.put("name", toolChoice.path("function").path("name").asText());
+        }
+        if (source.path("tools").isArray()) {
+            ArrayNode tools = target.putArray("tools");
+            for (JsonNode tool : source.path("tools")) {
+                if (!"function".equals(tool.path("type").asText())) continue;
+                ObjectNode function = tools.addObject();
+                function.put("type", "function");
+                JsonNode definition = tool.path("function");
+                if (definition.isObject()) copyIfPresent((ObjectNode) definition, function, "name", "description", "parameters", "strict");
+            }
+        }
+        if (source.has("max_completion_tokens") && !target.has("max_output_tokens")) {
+            target.set("max_output_tokens", source.get("max_completion_tokens"));
+        }
         if (source.has("max_tokens") && !target.has("max_output_tokens")) {
             target.set("max_output_tokens", source.get("max_tokens"));
         }

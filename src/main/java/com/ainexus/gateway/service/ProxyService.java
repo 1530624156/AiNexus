@@ -209,6 +209,20 @@ public class ProxyService {
                 }
                 return;
             }
+            if (protocol == ChannelProtocol.OPENAI_RESPONSES && stream && code < 400) {
+                response.setContentType("text/event-stream;charset=UTF-8");
+                response.setHeader("X-Accel-Buffering", "no");
+                response.setHeader("Cache-Control", "no-cache");
+                try (InputStream in = body.byteStream(); OutputStream out = response.getOutputStream()) {
+                    applyUsage(request, new ResponsesStreamConverter(objectMapper, channel, out).relay(in));
+                    if (!isRetryableStatus(code)) channelCircuitBreakerService.recordSuccess(channel);
+                    request.setAttribute("ainexus.audit.upstreamLatencyMs", (System.nanoTime() - upstreamStartedAt) / 1_000_000);
+                } catch (IOException e) {
+                    call.cancel();
+                    throw e;
+                }
+                return;
+            }
             copyResponseHeaders(upstream, response);
             if (!stream) {
                 byte[] responseBytes = body.bytes();
@@ -254,9 +268,12 @@ public class ProxyService {
     private Request buildUpstreamRequest(HttpServletRequest request, UpstreamProtocolAdapter.AdaptedRequest adapted,
                                          boolean stream, ChannelRoute channel) {
         String baseUrl = channel.getBaseUrl().replaceAll("/+$", "");
-        String path = channel.getRequestPath() == null || channel.getRequestPath().isBlank()
-                ? adapted.defaultPath()
-                : channel.getRequestPath();
+        boolean defaultPath = channel.getRequestPath() == null || channel.getRequestPath().isBlank();
+        String path = defaultPath ? adapted.defaultPath() : channel.getRequestPath();
+        // A configured base URL may already end at the API version, e.g. /api/v1.
+        if (defaultPath && baseUrl.endsWith("/v1") && path.startsWith("/v1/")) {
+            path = path.substring(3);
+        }
         if (!path.startsWith("/")) {
             path = "/" + path;
         }
