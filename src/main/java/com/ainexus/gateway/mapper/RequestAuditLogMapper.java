@@ -13,7 +13,8 @@ import java.util.List;
 @Mapper
 public interface RequestAuditLogMapper extends BaseMapper<RequestAuditLog> {
     /** Pending audit rows describe in-flight or interrupted requests; they must not affect usage or quota totals. */
-    String COMPLETED_ONLY = "status_code <> 0";
+    // MyBatis parses @Select <script> as XML: use SQL != instead of raw <> (unescaped '<' breaks startup).
+    String COMPLETED_ONLY = "status_code != 0";
 
     @Select("<script>SELECT COALESCE(SUM(prompt_tokens), 0) FROM request_audit_log "
             + "WHERE " + COMPLETED_ONLY + " AND create_time &gt;= #{periodStart} AND app_name IN "
