@@ -5,6 +5,7 @@ import com.ainexus.gateway.route.ChannelRoute;
 import jakarta.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
 import org.redisson.api.RPermitExpirableSemaphore;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.util.concurrent.ConcurrentHashMap;
@@ -48,6 +49,7 @@ public class ChannelConcurrencyService {
     private final ConcurrentMap<Long, java.util.concurrent.atomic.AtomicInteger> activeCounters = new ConcurrentHashMap<>();
     private final ConcurrentMap<Long, Long> exhaustedLoggedAt = new ConcurrentHashMap<>();
 
+    @Autowired
     public ChannelConcurrencyService(RedisSupport redisSupport) {
         this(redisSupport, new ScheduledThreadPoolExecutor(1, daemonThreadFactory()));
     }
