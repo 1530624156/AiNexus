@@ -22,7 +22,7 @@ spring:
   datasource:
     # 按需修改为真实地址; MySQL 不可用时网关以静态降级模式启动(见 gateway.degraded-channels)
     driver-class-name: com.mysql.cj.jdbc.Driver
-    url: jdbc:mysql://ainexus.b509.cn:3306/ainexus?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
+    url: jdbc:mysql://localhost:3306/ainexus?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
     username: root
     password: gyx1129
     hikari:
@@ -39,7 +39,7 @@ spring:
   # ===== Redis 占位配置(Redisson 由 RedisSupport 以降级模式管理) =====
   data:
     redis:
-      host: ainexus.b509.cn
+      host: localhost
       port: 6379
       password: gyx1129@
       database: 0
