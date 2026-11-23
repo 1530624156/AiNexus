@@ -2,6 +2,7 @@ package com.ainexus.gateway.controller;
 
 import com.ainexus.gateway.entity.RequestAuditLog;
 import com.ainexus.gateway.mapper.RequestAuditLogMapper;
+import com.ainexus.gateway.service.AuditLogService;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.util.StringUtils;
@@ -24,6 +25,7 @@ public class UsageRankingController {
     @GetMapping
     public UsageRankingResponse ranking() {
         List<RequestAuditLog> rows = auditMapper.selectList(new LambdaQueryWrapper<RequestAuditLog>()
+                .ne(RequestAuditLog::getStatusCode, AuditLogService.STATUS_PENDING)
                 .isNotNull(RequestAuditLog::getUserName)
                 .orderByDesc(RequestAuditLog::getCreateTime));
         Map<String, List<RequestAuditLog>> byUser = new LinkedHashMap<>();

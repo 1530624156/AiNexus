@@ -77,6 +77,7 @@ public class UserGroupTokenQuotaService {
     public long usedByAccount(Long accountId, LocalDateTime periodStart) {
         return auditMapper.selectList(new LambdaQueryWrapper<RequestAuditLog>()
                         .eq(RequestAuditLog::getAccountId, accountId)
+                        .ne(RequestAuditLog::getStatusCode, AuditLogService.STATUS_PENDING)
                         .ge(RequestAuditLog::getCreateTime, periodStart))
                 .stream().map(RequestAuditLog::getTotalTokens).filter(java.util.Objects::nonNull).mapToLong(Long::longValue).sum();
     }
@@ -85,7 +86,8 @@ public class UserGroupTokenQuotaService {
         List<Long> members = memberMapper.selectList(new LambdaQueryWrapper<UserGroupMember>().eq(UserGroupMember::getUserGroupId, groupId))
                 .stream().map(UserGroupMember::getAccountId).toList();
         if (members.isEmpty()) return 0;
-        return auditMapper.selectList(new LambdaQueryWrapper<RequestAuditLog>().in(RequestAuditLog::getAccountId, members).ge(RequestAuditLog::getCreateTime, periodStart))
+        return auditMapper.selectList(new LambdaQueryWrapper<RequestAuditLog>().in(RequestAuditLog::getAccountId, members)
+                .ne(RequestAuditLog::getStatusCode, AuditLogService.STATUS_PENDING).ge(RequestAuditLog::getCreateTime, periodStart))
                 .stream().map(RequestAuditLog::getTotalTokens).filter(java.util.Objects::nonNull).mapToLong(Long::longValue).sum();
     }
 

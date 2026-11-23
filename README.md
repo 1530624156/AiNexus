@@ -52,7 +52,9 @@ ProxyService ── 透明透传
 
 - `gateway_token.rate_limit_config` 使用 JSON 配置应用级分布式限流，例如 `{"permitsPerSecond":5}`。限流范围默认为 `app_name`，命中时返回 OpenAI 风格 `429 rate_limit_exceeded`。
 - 熔断状态保存在 Redis；渠道连续失败阈值为 5，冷却期为 300 秒。`channel.failure_count` 由虚拟线程异步回写，供运营观测，Redis 状态才是实时选路权威。
-- `request_audit_log` 记录应用、模型、最终尝试渠道、近似 prompt token、状态码、耗时与截断错误摘要。日志 insert 在虚拟线程执行，绝不阻塞 SSE 响应。
+- `request_audit_log` 记录应用、模型、最终尝试渠道、近似 prompt token、状态码、耗时与截断错误摘要。日志写入在虚拟线程执行，绝不阻塞 SSE 响应。
+- 审计是**两段式**写入：请求进入转发链路时先落一条 `status_code = 0`（处理中）的记录，请求结束时按 `request_id` 更新同一条记录（`uk_audit_request_id` 唯一键保证不重复）。因此**“客户端卡住但后台也看不到日志”意味着请求已经卡在转发链路里**，而不是没到网关；卡死或被 kill 的请求会以 `status_code = 0` 留在调用日志中，管理端显示为“处理中”。处理中记录不参与用量、配额、排行榜和概览统计，避免中断请求污染运营数据。
+- 全局并发准入与渠道并发许可都必须有界：全局排队超时由网关设置的 `queueTimeoutSeconds` 控制，超时统一按 `429 rate_limit_exceeded` 拒绝而不是无限挂起。渠道许可拿不到会立即切换候选渠道；持有超过租约的 SSE 会自动续租，防止长流绕过渠道并发上限。
 - 审计 `prompt_tokens` 是纯文本消息的 `字符数 / 4` 近似值；复杂多模态请求记录为 `NULL`，不伪造厂商精确 token。
 
 ## 3. 快速开始
@@ -128,7 +130,7 @@ curl http://localhost:8080/v1/models \
        (@channel_id, 'GLM-5.2',       NULL, 1);
    ```
    `upstream_model_name` 可为空（原样透传），也可设置为厂商实际模型名实现内部模型别名映射。模型名可能区分大小写：例如对外暴露 `GLM-5.3` 时，可映射为厂商实际值 `glm-5.3`。
-3. `priority` 数值越大越优先；只在相同优先级内按 `weight` 加权分配；`max_concurrent=0` 表示不限并发。渠道级 Semaphore 会覆盖整个 SSE 生命周期。
+3. `priority` 数值越大越优先；只在相同优先级内按 `weight` 加权分配；`max_concurrent=0` 表示不限并发。渠道级许可会覆盖整个 SSE 生命周期，语义固定为“拿不到就换下一条渠道”：`tryAcquire(0, 1800s)` —— **等待时间为 0**（立即 failover，绝不阻塞调用方），**初始租约 30 分钟**（进程被杀/流中断后许可自动回收）。请求尚未结束时，后台每 10 分钟调用 `updateLeaseTime` 续租，因此允许长 SSE 而不会在 30 分钟后突破渠道并发上限。不要再退回两参数重载 `tryAcquire(1800, SECONDS)`：它的第一个参数是等待时间，会把请求挂 30 分钟，而且没有租约，Redis 计数会被永久扣减、重启也不会复位。
 4. 渠道可多选“支持协议”，并从中指定一个 `protocol` 作为**主协议**。主协议是生产路由实际使用的报文格式、默认路径与鉴权方式；支持协议列表仅记录该渠道能力，不会在请求时盲目轮询或自动猜测。`protocol_config.requestPath` 仍可覆盖主协议默认路径：
 
    | protocol | 上游路径 | 鉴权 | 网关行为 |
@@ -215,6 +217,14 @@ try (InputStream in = body.byteStream();
 - `/v1` 调用链路的模型错误分为三类，网关绝不把“模型不存在”报成鉴权失败（否则调用方客户端会把 403 渲染成“API 密钥无效”）：模型名不在当前可路由目录 → `404 model_not_found`（区分大小写的唯一近似匹配会在 message 里给出 `Did you mean '...'?` 提示）；模型存在但该 API Key 所属用户组未授权 → `403 model_not_authorized`，message 明确写出“API Key 有效，但模型未授权”；模型已注册但渠道全被熔断/不可用 → `503 no_available_channel`。
 - 模型发现拒绝回环、私网和链路本地地址，防止管理端被用作 SSRF 探针；本机 Mock 渠道请手工添加模型绑定。
 - 渠道列表的“测试”支持一个或多个已绑定模型，向上游发送非流式短对话；每个模型单独报告可用性、HTTP 状态、耗时和回答/错误摘要。单批最多 20 个模型、最多 4 个并发测试，不进入生产路由、内部 Token 限流、审计日志或熔断计数。
+  **因此“测试通过”只证明该渠道的上游地址和真实 Key 可用**，不证明 `/v1` 链路可用：全局并发队列、渠道并发许可、用户组并发/配额、协议转换和熔断都没有参与。判断 DSH/OpenAI SDK 是否可用，必须用真实 `/v1/chat/completions`（`stream=true`）验证，并在调用日志确认 `stream=1 && status_code=200`。
+
+#### 排障：客户端无响应，且后台看不到调用记录
+
+1. 先看 `request_audit_log` 是否有 `status_code = 0` 的记录：有 → 请求已进入转发链路并卡住（排队/渠道许可/上游），没有 → 请求根本没到网关（域名、端口、`/v1` 路径、API Key、反代 413/504 等）。
+2. 检查渠道并发许可是否被扣成 0 且永不过期（Redis）：`GET ainexus:channel:concurrent:v2:<channelId>` 与 `TTL`。值为 0 且 `TTL = -1` 表示许可已泄漏，该渠道上的模型会全部挂起；`DEL` 该键即可复位（重启网关不会复位，`trySetPermits` 对已存在的键不生效）。
+3. 检查 `gateway_runtime_setting` 的 `max_concurrent` / `queue_capacity` / `queue_timeout_seconds` 与用户组的 `max_concurrent`：全局 15/队列 3 这种配置在 4 个以上活跃会话时就会批量 `429 rate_limit_exceeded`。队列超时应按调用方的可接受等待时间设置，默认 60 秒。
+4. `stream_idle_timeout_seconds = 0` 表示流式永不超时：上游接受连接后不吐数据时，连接和渠道许可会被一直占住。许可会续租以避免突破并发上限，但连接仍会耗用容量；生产建议 120–180 秒。
 
 ### Vue 管理台
 

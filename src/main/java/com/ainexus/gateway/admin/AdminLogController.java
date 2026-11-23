@@ -3,6 +3,7 @@ package com.ainexus.gateway.admin;
 import com.ainexus.gateway.entity.RequestAuditLog;
 import com.ainexus.gateway.mapper.ChannelMapper;
 import com.ainexus.gateway.mapper.RequestAuditLogMapper;
+import com.ainexus.gateway.service.AuditLogService;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import lombok.RequiredArgsConstructor;
@@ -48,6 +49,7 @@ public class AdminLogController {
     public Map<String, Long> dashboard() {
         LocalDateTime startOfToday = LocalDateTime.of(LocalDateTime.now().toLocalDate(), LocalTime.MIN);
         long todayRequests = requestAuditLogMapper.selectCount(new LambdaQueryWrapper<RequestAuditLog>()
+                .ne(RequestAuditLog::getStatusCode, AuditLogService.STATUS_PENDING)
                 .ge(RequestAuditLog::getCreateTime, startOfToday));
         long todayErrors = requestAuditLogMapper.selectCount(new LambdaQueryWrapper<RequestAuditLog>()
                 .ge(RequestAuditLog::getCreateTime, startOfToday)

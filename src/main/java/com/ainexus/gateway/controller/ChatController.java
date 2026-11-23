@@ -31,6 +31,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.Arrays;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
 
 /** OpenAI 兼容统一入口。 */
 @Slf4j
@@ -79,6 +80,7 @@ public class ChatController {
         String model = null;
         Integer promptTokens = null;
         Throwable failure = null;
+        CompletableFuture<Void> auditStarted = null;
         try {
             if (body == null || body.length == 0) {
                 throw BizException.badRequest("empty_body", "Request body must not be empty");
@@ -96,6 +98,11 @@ public class ChatController {
             promptTokens = estimatePromptTokens(root);
             boolean stream = root.path("stream").asBoolean(false);
             request.setAttribute("ainexus.audit.stream", stream);
+            // 先落一条“处理中”审计记录：后续无论卡在全局排队、渠道许可还是上游超时，后台都能看到这请求。
+            auditStarted = auditLogService.start(AuditLogService.pending(
+                    requestId, (String) request.getAttribute("ainexus.auth.appName"),
+                    (String) request.getAttribute("ainexus.auth.appName"),
+                    (Long) request.getAttribute("ainexus.auth.accountId"), model, stream, apiType(request)));
 
             userGroupCallWindowService.check((Long) request.getAttribute("ainexus.auth.accountId"));
             userGroupTokenQuotaService.check((Long) request.getAttribute("ainexus.auth.accountId"));
@@ -119,7 +126,7 @@ public class ChatController {
             Long inputTokens = (Long) request.getAttribute("ainexus.audit.inputTokens");
             String appName = (String) request.getAttribute("ainexus.auth.appName");
             String upstreamModel = (String) request.getAttribute("ainexus.audit.upstreamModel");
-            auditLogService.submit(new AuditLogService.AuditEvent(
+            auditLogService.complete(new AuditLogService.AuditEvent(
                     requestId, appName, appName, dimensions.accountId(), dimensions.userName(), model,
                     upstreamModel == null ? model : upstreamModel, (String) request.getAttribute("ainexus.audit.targetChannel"),
                     (String) request.getAttribute("ainexus.audit.provider"), (String) request.getAttribute("ainexus.audit.upstreamAccount"),
@@ -131,7 +138,7 @@ public class ChatController {
                     (Integer) request.getAttribute("ainexus.audit.upstreamStatusCode"), latencyMs,
                     (Long) request.getAttribute("ainexus.audit.firstTokenMs"), (Long) request.getAttribute("ainexus.audit.queueMs"), (Long) request.getAttribute("ainexus.audit.upstreamLatencyMs"),
                     failure instanceof BizException biz ? biz.getCode() : failure == null ? null : "gateway_error",
-                    failure == null ? null : failure.getMessage()));
+                    failure == null ? null : failure.getMessage()), auditStarted);
         }
     }
 

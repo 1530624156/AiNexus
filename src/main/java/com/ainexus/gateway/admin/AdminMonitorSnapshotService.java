@@ -7,6 +7,7 @@ import com.ainexus.gateway.mapper.RequestAuditLogMapper;
 import com.ainexus.gateway.service.ConcurrencyHistoryService;
 import com.ainexus.gateway.service.GatewayActivityService;
 import com.ainexus.gateway.service.GatewayConcurrencyService;
+import com.ainexus.gateway.service.AuditLogService;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.sun.management.OperatingSystemMXBean;
 import lombok.RequiredArgsConstructor;
@@ -60,9 +61,14 @@ public class AdminMonitorSnapshotService {
 
     private AdminMonitorController.Log toLog(RequestAuditLog row) {
         int status = row.getStatusCode() == null ? 0 : row.getStatusCode();
+        String model = row.getRequestModel() == null ? "网关" : row.getRequestModel();
+        if (status == AuditLogService.STATUS_PENDING) {
+            return new AdminMonitorController.Log(row.getCreateTime() == null ? "--:--:--" : TIME.format(row.getCreateTime().atZone(ZoneId.systemDefault()).toInstant()),
+                    "INFO", "请求 " + model + " 处理中（尚未返回）");
+        }
         String level = status >= 500 ? "ERROR" : status >= 400 ? "WARN" : "INFO";
         String message = row.getErrorMsg();
-        if (message == null || message.isBlank()) message = "请求 " + (row.getRequestModel() == null ? "网关" : row.getRequestModel()) + " 已完成，状态 " + status;
+        if (message == null || message.isBlank()) message = "请求 " + model + " 已完成，状态 " + status;
         return new AdminMonitorController.Log(row.getCreateTime() == null ? "--:--:--" : TIME.format(row.getCreateTime().atZone(ZoneId.systemDefault()).toInstant()), level, message);
     }
 

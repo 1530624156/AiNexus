@@ -9,6 +9,7 @@ import com.ainexus.gateway.entity.Token;
 import com.ainexus.gateway.mapper.AccountMapper;
 import com.ainexus.gateway.mapper.RequestAuditLogMapper;
 import com.ainexus.gateway.mapper.TokenMapper;
+import com.ainexus.gateway.service.AuditLogService;
 import com.ainexus.gateway.service.GatewayRuntimeSettingsService;
 import com.ainexus.gateway.service.ModelAuthorizationService;
 import com.ainexus.gateway.service.RouteCacheService;
@@ -113,6 +114,7 @@ public class UserPortalController {
         Long accountId = account(request).id();
         List<RequestAuditLog> rows = requestAuditLogMapper.selectList(new LambdaQueryWrapper<RequestAuditLog>()
                 .eq(RequestAuditLog::getAccountId, accountId)
+                .ne(RequestAuditLog::getStatusCode, AuditLogService.STATUS_PENDING)
                 .eq(apiKey != null && !apiKey.isBlank(), RequestAuditLog::getAppName, apiKey)
                 .eq(model != null && !model.isBlank(), RequestAuditLog::getRequestModel, model));
         long requests = rows.size(); long errors = rows.stream().filter(row -> row.getStatusCode() >= 400).count();

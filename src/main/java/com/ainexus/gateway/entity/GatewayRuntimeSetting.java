@@ -16,6 +16,7 @@ public class GatewayRuntimeSetting {
     private Integer protocolConversionEnabled;
     private Integer maxConcurrent;
     private Integer queueCapacity;
+    private Integer queueTimeoutSeconds;
     private Integer nonStreamTimeoutSeconds;
     private Integer streamIdleTimeoutSeconds;
     private Integer maxPayloadMb;
