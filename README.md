@@ -80,6 +80,10 @@ mvn -DskipTests spring-boot:run
 
 广告位配置保存在 `ad_setting`（全局招商联系方式）与 `ad_slot`（三个广告位）两张表。已有数据库升级时执行 [V24__advertisement.sql](src/main/resources/sql/migration/V24__advertisement.sql)。未执行该脚本时，登录页与用户端不会展示广告卡片（公开接口失败被前端静默忽略），管理端“系统设置”中的广告位表单同样无法保存。
 
+### 更新日志数据库升级
+
+更新日志保存在 `release_note` 表。已有数据库升级时执行 [V31__release_note.sql](src/main/resources/sql/migration/V31__release_note.sql)；未执行该脚本时，管理端和用户端的“更新日志”页面接口会因缺表失败，不影响 `/v1` 转发。
+
 ### 模型目录
 
 网关提供本地 OpenAI 兼容模型目录，不会查询上游厂商，数据来自当前预热的路由缓存：
@@ -173,8 +177,8 @@ try (InputStream in = body.byteStream();
 
 - 登录入口为前端根页面。首次启动会在 `account` 表中创建管理员：用户名 `admin`，密码 `change_me`；生产环境必须通过 `GATEWAY_BOOTSTRAP_ADMIN_PASSWORD` 覆盖初始密码，并设置 `GATEWAY_CONSOLE_SESSION_SECRET`。
 - 密码以 PBKDF2-HMAC-SHA256 哈希保存，登录会话为 12 小时签名令牌；禁用账号后会话在下一次请求立即失效。
-- 管理员端包含：概览、账号池、模型组、用户、用户组、用户反馈、用量统计、使用排行榜、调用日志、赞助记录、网关设置、系统设置。管理员可在顶部切换至用户端。系统设置中可配置商业广告位与全局招商联系方式。
-- 用户端包含：模型广场、API Keys、用量统计、使用排行榜、赞助支持、意见反馈、账户设置，并在主内容区右上角与侧边栏底部展示商业广告位；登录页在左侧功能列表下方展示广告位。普通用户无法访问 `/api/admin/**`。
+- 管理员端包含：概览、账号池、模型组、用户、用户组、用户反馈、用量统计、使用排行榜、调用日志、风险复核、更新日志、赞助记录、网关设置、系统设置。管理员可在顶部切换至用户端。系统设置中可配置商业广告位与全局招商联系方式。
+- 用户端包含：模型广场、API Keys、用量统计、使用排行榜、赞助支持、意见反馈、更新日志、账户设置，并在主内容区右上角与侧边栏底部展示商业广告位；登录页在左侧功能列表下方展示广告位。普通用户无法访问 `/api/admin/**`。
 - 管理员“用户”页面管理普通 `USER` 账号，新增时必须填写用户名、密码、确认密码和备注；密码最少 8 位，服务端再次校验两次密码一致。
 - 用户端 API Key 写入 `gateway_token.account_id`，创建与撤销后立即刷新 Token 缓存；明文 Key 仅在创建响应中返回一次。
 
@@ -192,6 +196,7 @@ try (InputStream in = body.byteStream();
 | 用户组 | `GET/POST /api/admin/user-groups`，`PUT/DELETE /api/admin/user-groups/{id}`，`GET /api/admin/user-groups/available-members`，`GET /api/admin/user-groups/available-model-groups` |
 | 用户反馈 | `GET /api/admin/feedback?status=PENDING\|REPLIED`，`PUT /api/admin/feedback/{id}/reply` |
 | 商业广告位 | `GET/PUT /api/admin/ads`，公开读取 `GET /api/public/ads` |
+| 更新日志 | `GET/POST /api/admin/release-notes`，`PUT/DELETE /api/admin/release-notes/{id}`；用户读取 `GET /api/console/release-notes` |
 | Token | `GET/POST /api/admin/tokens`，`PUT/DELETE /api/admin/tokens/{id}`，`PATCH /api/admin/tokens/{id}/status` |
 | 用量统计 | `GET /api/admin/usage?user=&provider=&apiType=`，`GET /api/admin/usage/filters` |
 | 审计日志 | `GET /api/admin/logs?page=1&size=20&appName=&statusCode=`，`GET /api/admin/logs/{id}` |
@@ -210,6 +215,7 @@ try (InputStream in = body.byteStream();
 - 用户反馈使用 `user_feedback` 表保存提交人账号与用户名快照、类型（`SUGGESTION`/`BUG`/`PERFORMANCE`/`OTHER`）、内容（2-2000 字符）、可选联系方式和状态（`PENDING`/`REPLIED`）。用户端接口为 `GET/POST /api/console/feedback`，只返回当前账号提交的反馈；管理端可查看全部反馈、按状态筛选并回复。每条反馈保留最近一次管理员回复（回复人、时间、内容），再次回复覆盖旧内容并保持 `REPLIED` 状态，用户端“我的反馈”随即展示。
 - 商业广告位在管理端“系统设置 → 商业广告位”配置，写入 `ad_setting`（全局招商联系方式：微信号/QQ/邮箱/二维码图片/跳转链接）与 `ad_slot`（三个广告位）。广告位状态为 `LEASING`（招租中）、`ACTIVE`（已投放）、`CLOSED`（关闭）：招租中展示“广告位招租”与“立即联系”，点击后弹窗展示招商联系方式（`LINK` 类型直接新标签页打开）；已投放展示广告主 Logo、主标题、副标题与行动按钮；`CLOSED` 的广告位不会出现在公开接口中，前端因此不渲染卡片、不留空白。位置为：登录页左侧功能列表下方、用户端主内容区标题右侧、用户端侧边栏用户信息上方。Logo、跳转链接与二维码只接受 `http(s)://` 或 `/` 开头的站内路径，避免写入 `javascript:` 等危险链接；`ACTIVE` 必须填写主标题。
 - 广告卡片自适应窗口宽度，不会因为窗口变窄而无声消失：顶部卡片在 1320px 以下收起副标题、1080px 以下进一步压缩为文字 + 按钮，仅在 640px 以下（手机）隐藏；侧边栏卡片在侧栏收起为 64px 图标栏时转为紧凑图块；“招租中”内容与状态无关地始终保留。公开广告接口首次加载失败时会静默重试一次，并在进入用户端且本地无数据时重新拉取，避免部署或后端重启瞬间导致广告位整场会话空白。
+- 更新日志由管理员创建、编辑和删除，状态为 `DRAFT`（仅管理员可见）或 `PUBLISHED`（所有已登录用户可见）。首次发布记录发布时间；撤回为草稿时会清空发布时间。用户端按发布时间倒序展示，不开放写操作。
 - 广告位展示层刻意使用 `promo-*` 类名与 `aria-label="推广位"`（不用 `ad-*` / `-ad` 命名，卡片上仍然保留可见的“广告”标识以满足广告法要求）：EasyList、AdGuard 等通用广告拦截规则会按 `[class$="-ad"]`、`[class*="ad-"]`、`[aria-label*="ad"]` 一类的 cosmetic filter 直接对广告元素注入 `display:none`，用广告命名会让**已售出的广告位对所有装了拦截器的访客静默消失**。若线上仍反馈“广告位看不到”，先用无痕窗口对比（可排除拦截器），再检查 `GET /api/public/ads` 返回值与元素计算样式。
 - 用户组使用 `user_group`、`user_group_member`、`user_group_model_group` 三张表，支持普通用户成员选择、授权模型组、组/单 API Key/成员并发限制及组/成员 Token 配额。配额周期只允许 `DAY`、`WEEK`、`MONTH`、`YEAR`，所有配额或并发值 `0` 表示不限制。用户组还可配置“允许调用时间”时间段（`allow_time_start` / `allow_time_end`，`HH:mm`）。
 - 允许调用时间为半小时开放的日时段限制：`start <= now < end` 放行；结束时间不晚于开始时间按跨夜处理（如 `22:00`-`06:00`）；开始与结束相同或两者留空表示全天不限；只有一端填写会被拒绝（`400 invalid_allow_time`）。用户属于多个用户组时按“严格模式”判定：任一组的时间段不覆盖当前时刻即拒绝，未配置时间段的组不约束成员。时段以网关服务器本地时区计算，命中拒绝时返回 `403 user_group_call_time_restricted`，并写入调用日志。管理员控制台和内部服务 Token 不受该限制。

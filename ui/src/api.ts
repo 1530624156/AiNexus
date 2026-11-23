@@ -129,6 +129,9 @@ export type FeedbackCategory = 'SUGGESTION' | 'BUG' | 'PERFORMANCE' | 'OTHER'
 export type FeedbackStatus = 'PENDING' | 'REPLIED'
 export type Feedback = { id: number; accountId: number; username: string; category: FeedbackCategory; content: string; contact?: string | null; status: FeedbackStatus; replyContent?: string | null; repliedBy?: string | null; repliedAt?: string | null; createTime?: string; updateTime?: string }
 export type FeedbackSubmit = { category: FeedbackCategory; content: string; contact?: string }
+export type ReleaseNoteStatus = 'DRAFT' | 'PUBLISHED'
+export type ReleaseNote = { id: number; version: string; title: string; content: string; status: ReleaseNoteStatus; publishedAt?: string | null; createdBy?: string | null; createTime?: string; updateTime?: string }
+export type ReleaseNoteInput = { version: string; title: string; content: string; status: ReleaseNoteStatus }
 export type AdSlotKey = 'LOGIN_ASIDE' | 'USER_HERO' | 'USER_SIDEBAR'
 export type AdStatus = 'LEASING' | 'ACTIVE' | 'CLOSED'
 export type AdContactType = 'WECHAT' | 'QQ' | 'EMAIL' | 'QR' | 'LINK'
@@ -195,6 +198,10 @@ export const adminApi = {
   updateAds: (body: AdsConfig) => api.put<AdsConfig>('/admin/ads', body),
   riskSummary: () => api.get<RiskSummary>('/admin/risk-monitor/summary'),
   riskEvents: (params: { page: number; size: number; category?: string }) => api.get<{ records: RiskEvent[]; total: number }>('/admin/risk-monitor', { params }),
+  releaseNotes: () => api.get<ReleaseNote[]>('/admin/release-notes'),
+  createReleaseNote: (body: ReleaseNoteInput) => api.post<ReleaseNote>('/admin/release-notes', body),
+  updateReleaseNote: (id: number, body: ReleaseNoteInput) => api.put<ReleaseNote>(`/admin/release-notes/${id}`, body),
+  deleteReleaseNote: (id: number) => api.delete(`/admin/release-notes/${id}`),
 }
 export const portalApi = {
   profile: () => api.get<UserProfile>('/console/profile'),
@@ -216,6 +223,7 @@ export const portalApi = {
   sponsorshipRanking: () => api.get<SponsorshipRank[]>('/console/sponsorship-ranking'),
   feedback: () => api.get<Feedback[]>('/console/feedback'),
   submitFeedback: (body: FeedbackSubmit) => api.post<Feedback>('/console/feedback', body),
+  releaseNotes: () => api.get<ReleaseNote[]>('/console/release-notes'),
 }
 /** Unauthenticated endpoints used before a console session exists (login page). */
 export const publicApi = {
