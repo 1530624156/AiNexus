@@ -106,7 +106,8 @@ export type UsageTotals = { requests: number; inputTokens: number; outputTokens:
 export type UsageDistribution = { name: string; requests: number; totalTokens: number; cacheTokens: number; cacheHitRate: number }
 export type AdminUsage = { totals: UsageTotals; providers: UsageDistribution[]; channels: UsageDistribution[]; upstreamAccounts: UsageDistribution[]; modelGroups: UsageDistribution[]; models: UsageDistribution[]; userGroups: UsageDistribution[]; users: UsageDistribution[] }
 export type UsageFilters = { users: string[]; providers: string[]; apiTypes: string[] }
-export type UsageRank = { rank: number; username: string; requests: number; totalTokens: number; cacheTokens: number; cacheHitRate: number }
+export type UsageRank = { rank: number; username: string; remark?: string | null; requests: number; totalTokens: number; cacheTokens: number; cacheHitRate: number }
+export type UsageRankingPeriod = 'all' | 'day'
 export type UsageRanking = { rankings: UsageRank[]; totalTokens: number; totalUsers: number }
 export type TokenActivityDay = { date: string; totalTokens: number; requests: number }
 export type TokenActivity = { startDate: string; endDate: string; totalTokens: number; totalRequests: number; activeDays: number; days: TokenActivityDay[] }
@@ -160,7 +161,7 @@ export const adminApi = {
   usage: (params: { user?: string; provider?: string; apiType?: string; range: string; startDate?: string; endDate?: string }) => api.get<AdminUsage>('/admin/usage', { params }),
   usageFilters: () => api.get<UsageFilters>('/admin/usage/filters'),
   tokenActivity: (params: { user?: string; provider?: string; apiType?: string; range: string; startDate?: string; endDate?: string }) => api.get<TokenActivity>('/admin/usage/token-activity', { params }),
-  usageRanking: () => api.get<UsageRanking>('/console/usage-ranking'),
+  usageRanking: (period: UsageRankingPeriod = 'all') => api.get<UsageRanking>('/console/usage-ranking', { params: { period } }),
   channels: () => api.get<Channel[]>('/admin/channels'),
   createChannel: (body: any) => api.post<Channel>('/admin/channels', body),
   updateChannel: (id: number, body: any) => api.put<Channel>(`/admin/channels/${id}`, body),
@@ -212,7 +213,7 @@ export const portalApi = {
   deleteKey: (id: number) => api.delete(`/console/api-keys/${id}`),
   updateKeyStatus: (id: number, status: number) => api.patch(`/console/api-keys/${id}/status`, { status }),
   usage: (params: { apiKey?: string; model?: string }) => api.get<Usage>('/console/usage', { params }),
-  usageRanking: () => api.get<UsageRanking>('/console/usage-ranking'),
+  usageRanking: (period: UsageRankingPeriod = 'all') => api.get<UsageRanking>('/console/usage-ranking', { params: { period } }),
   tokenActivity: (params: { apiKey?: string; model?: string; endDate?: string }) => api.get<TokenActivity>('/console/token-activity', { params }),
   changePassword: (body: { currentPassword: string; newPassword: string; confirmPassword: string }) => api.post('/console/change-password', body),
   githubStatus: () => api.get<GithubBinding>('/console/github/status'),

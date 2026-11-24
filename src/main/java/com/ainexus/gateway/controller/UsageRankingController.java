@@ -1,15 +1,23 @@
 package com.ainexus.gateway.controller;
 
+import com.ainexus.gateway.common.BizException;
+import com.ainexus.gateway.entity.Account;
 import com.ainexus.gateway.entity.RequestAuditLog;
+import com.ainexus.gateway.mapper.AccountMapper;
 import com.ainexus.gateway.mapper.RequestAuditLogMapper;
 import com.ainexus.gateway.service.AuditLogService;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
-import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.time.Clock;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -18,24 +26,56 @@ import java.util.Map;
 /** Shared console leaderboard aggregated from immutable request audit records. */
 @RestController
 @RequestMapping("/api/console/usage-ranking")
-@RequiredArgsConstructor
 public class UsageRankingController {
+    // Audit DATETIME values use the Asia/Shanghai storage convention configured in application.yml.
+    private static final ZoneId AUDIT_ZONE = ZoneId.of("Asia/Shanghai");
     private final RequestAuditLogMapper auditMapper;
+    private final AccountMapper accountMapper;
+    private final Clock clock;
+
+    @Autowired
+    public UsageRankingController(RequestAuditLogMapper auditMapper, AccountMapper accountMapper) {
+        this(auditMapper, accountMapper, Clock.system(AUDIT_ZONE));
+    }
+
+    UsageRankingController(RequestAuditLogMapper auditMapper, AccountMapper accountMapper, Clock clock) {
+        this.auditMapper = auditMapper;
+        this.accountMapper = accountMapper;
+        this.clock = clock;
+    }
 
     @GetMapping
-    public UsageRankingResponse ranking() {
-        List<RequestAuditLog> rows = auditMapper.selectList(new LambdaQueryWrapper<RequestAuditLog>()
+    public UsageRankingResponse ranking(@RequestParam(name = "period", required = false) String period) {
+        if (period != null && !"all".equals(period) && !"day".equals(period)) {
+            throw BizException.badRequest("invalid_period", "period must be all or day");
+        }
+        LambdaQueryWrapper<RequestAuditLog> query = new LambdaQueryWrapper<RequestAuditLog>()
                 .ne(RequestAuditLog::getStatusCode, AuditLogService.STATUS_PENDING)
-                .isNotNull(RequestAuditLog::getUserName)
-                .orderByDesc(RequestAuditLog::getCreateTime));
+                .isNotNull(RequestAuditLog::getUserName);
+        if ("day".equals(period)) {
+            // Match local DATETIME directly; do not reinterpret the stored values as UTC instants.
+            LocalDateTime start = LocalDate.now(clock.withZone(AUDIT_ZONE)).atStartOfDay();
+            query.ge(RequestAuditLog::getCreateTime, start)
+                    .lt(RequestAuditLog::getCreateTime, start.plusDays(1));
+        }
+        List<RequestAuditLog> rows = auditMapper.selectList(query.orderByDesc(RequestAuditLog::getCreateTime));
         Map<String, List<RequestAuditLog>> byUser = new LinkedHashMap<>();
         rows.forEach(row -> {
             if (StringUtils.hasText(row.getUserName())) {
                 byUser.computeIfAbsent(row.getUserName(), ignored -> new java.util.ArrayList<>()).add(row);
             }
         });
+        Map<String, String> remarks = new LinkedHashMap<>();
+        if (!byUser.isEmpty()) {
+            // Enrich historical usage with current remarks, without loading account credentials.
+            accountMapper.selectList(new LambdaQueryWrapper<Account>()
+                            .select(Account::getUsername, Account::getRemark)
+                            .in(Account::getUsername, byUser.keySet()))
+                    .forEach(account -> remarks.put(account.getUsername(),
+                            StringUtils.hasText(account.getRemark()) ? account.getRemark() : null));
+        }
         List<UsageRank> rankings = byUser.entrySet().stream()
-                .map(entry -> toRank(entry.getKey(), entry.getValue()))
+                .map(entry -> toRank(entry.getKey(), remarks.get(entry.getKey()), entry.getValue()))
                 .sorted(Comparator.comparingLong(UsageRank::totalTokens).reversed()
                         .thenComparing(UsageRank::username))
                 .toList();
@@ -45,21 +85,21 @@ public class UsageRankingController {
         return new UsageRankingResponse(indexed, indexed.stream().mapToLong(UsageRank::totalTokens).sum(), indexed.size());
     }
 
-    private UsageRank toRank(String username, List<RequestAuditLog> rows) {
+    private UsageRank toRank(String username, String remark, List<RequestAuditLog> rows) {
         long input = sum(rows, RequestAuditLog::getInputTokens);
         long cache = sum(rows, RequestAuditLog::getCacheTokens);
         long prompt = input + cache;
         double cacheHitRate = prompt == 0 ? 0D : Math.round(cache * 10_000D / prompt) / 100D;
-        return new UsageRank(0, username, rows.size(), sum(rows, RequestAuditLog::getTotalTokens), cache, cacheHitRate);
+        return new UsageRank(0, username, remark, rows.size(), sum(rows, RequestAuditLog::getTotalTokens), cache, cacheHitRate);
     }
 
     private long sum(List<RequestAuditLog> rows, java.util.function.Function<RequestAuditLog, Long> field) {
         return rows.stream().map(field).filter(java.util.Objects::nonNull).mapToLong(Long::longValue).sum();
     }
 
-    public record UsageRank(int rank, String username, long requests, long totalTokens, long cacheTokens, double cacheHitRate) {
+    public record UsageRank(int rank, String username, String remark, long requests, long totalTokens, long cacheTokens, double cacheHitRate) {
         private UsageRank withRank(int value) {
-            return new UsageRank(value, username, requests, totalTokens, cacheTokens, cacheHitRate);
+            return new UsageRank(value, username, remark, requests, totalTokens, cacheTokens, cacheHitRate);
         }
     }
     public record UsageRankingResponse(List<UsageRank> rankings, long totalTokens, int totalUsers) { }
